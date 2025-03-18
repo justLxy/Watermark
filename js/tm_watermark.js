@@ -24,7 +24,7 @@ let session_resize;
   for (const config of modelConfigs) {
     let startTime = new Date();
     try {
-      sessions[config.sessionVar] = await ort.InferenceSession.create(`${config.fname}.onnx`, { executionProviders: ['webgpu'] });
+      sessions[config.sessionVar] = await ort.InferenceSession.create(`${MODEL_BASE_URL}${config.fname}.onnx`, { executionProviders: ['webgpu'] });
       let timeElapsed = new Date() - startTime;
       console.log(`${config.fname} model loaded in ${timeElapsed / 1000} seconds`);
     } catch (error) {
@@ -33,7 +33,7 @@ let session_resize;
   }
   let startTime = new Date();
   try {
-       session_resize = await ort.InferenceSession.create('resizer.onnx', { executionProviders: ['wasm'] });  // cannot use GPU for this due to lack of antialias
+       session_resize = await ort.InferenceSession.create(`${MODEL_BASE_URL}resizer.onnx`, { executionProviders: ['wasm'] });  // cannot use GPU for this due to lack of antialias
        let timeElapsed = new Date() - startTime;
        console.log(`Image downscaler model loaded in ${timeElapsed / 1000} seconds`);
   }

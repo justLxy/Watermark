@@ -12,11 +12,13 @@ This repository contains the following directories:
 
 - `/python`: Python implementation of TrustMark for encoding, decoding and removing image watermarks (using PyTorch).  For more information, see [TrustMark - Python implementation](./python/README.md).
 - `/js`: Javascript implementation of TrustMark decoding of image watermarks (using ONNX).  For more information, see [TrustMark - JavaScript implementation](./python/README.md).
-- `/c2pa`: Python example of how to indicate the presence of a TrustMark watermark in a C2PA metadata (manifest).
+- `/c2pa`: Python example of how to indicate the presence of a TrustMark watermark in a C2PA manifest.
 
 Models (**ckpt** and **onnx**) are not packaged in this repo due to size, but are downloaded upon first use.  See the code for [URLs and md5 hashes](https://github.com/adobe/trustmark/blob/4ef0dde4abd84d1c6873e7c5024482f849db2c73/python/trustmark/trustmark.py#L30) for a direct download link.
 
-For answers to common questions, see the extensive [TrustMark FAQ](FAQ.md).
+More information:
+- For answers to common questions, see the [FAQ](FAQ.md).
+- For information on configuring TrustMark in Python, see [Configuring TrustMark](CONFIG.md).
 
 ## Installation
 
@@ -92,6 +94,59 @@ im_recover = tm.remove_watermark(stego)
 im_recover.save('images/recovered.png')
 ```
 
+## GPU setup
+
+TrustMark runs well on CPU hardware.  
+
+To leverage GPU compute for the PyTorch implementation on Ubuntu Linux, first install Conda, then use the following commands to install:
+
+```sh
+conda create --name trustmark python=3.10
+conda activate trustmark
+conda install pytorch cudatoolkit=12.8 -c pytorch -c conda-forge
+pip install torch==2.1.2 torchvision==0.16.2 -f https://download.pytorch.org/whl/torch_stable.html
+pip install .
+```
+
+For the JavaScript implementation, a Chromium browser automatically uses WebGPU, if available.
+
+## TrustMark data schema
+
+Packaged TrustMark models and code are trained to encode a payload of 100 bits.
+
+To promote interoperability, use the data schema implemented in `python/datalayer.py`.  This enables you to choose an error correction level over the raw 100 bits of payload.
+
+### Encoding modes
+
+The following table describes TrustMark's encoding modes:
+
+| Encoding | Protected payload | Number of bit flips allowed |
+|----------|-------------------|-----------------------------|
+| `Encoding.BCH_5` | 61 bits (+ 35 ECC bits) | 5 bit |
+| `Encoding.BCH_4` | 68 bits (+ 28 ECC bits) | 4 bit |
+| `Encoding.BCH_3` | 75 bits (+ 21 ECC bits) | 3 bit |
+| `Encoding.BCH_SUPER` | 40 bits (+ 56 ECC bits) | 8 bit|
+
+Specify the mode when you instantiate the encoder, as follows:
+
+```py
+tm=TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.<ENCODING>)
+```
+
+Where `<ENCODING>` is `BCH_5`, `BCH_4`, `BCH_3`, or `BCH_SUPER`.
+
+For example:
+
+```py
+tm=TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.BCH_5)
+```
+
+The decoder will automatically detect the data schema in a given watermark, allowing you to choose the level of robustness that best suits your use case.
+
+### Payload encoding
+
+The raw 100 bits break down into D+E+V=100 bits, where D is the protect payload (for example, 61) and E are the error correction parity bits (e.g. 35) and V are the version bits (always four). The version bits comprise two reserved (unused) bits, and two bits encoding an $.
+  
 ## Using with C2PA
 
 ### Durable Content Credentials
@@ -106,7 +161,7 @@ For more information, see the [FAQ](FAQ.md#how-does-trustmark-align-with-provena
 
 ### Signpost watermark
 
-TrustMark [coexists well with most other image watermarks](https://arxiv.org/abs/2501.17356) and so can be used as a _signpost_ to indicate the co-presence of another watermarking technology.  This can be helpful, as TrustMark is an open technology it can be used to indicate (signpost) which decoder to obtain and run on an image to decode a soft binding identifier for C2PA.
+TrustMark [coexists well with most other image watermarks](https://arxiv.org/abs/2501.17356) and so can be used as a _signpost_ to indicate the co-presence of another watermarking technology.  This can be helpful, sinace as an open technology, TrustMark can be used to indicate (signpost) which decoder to obtain and run on an image to decode a soft binding identifier for C2PA.
 
 In this mode the encoding should be `Encoding.BCH_SUPER` and the payload contain an integer identifier that describes the co-present watermark.  The integer should be taken from the registry of C2PA approved watermarks listed in this normative C2PA [softbinding-algorithms-list](https://github.com/c2pa-org/softbinding-algorithms-list) repository.
 
@@ -125,3 +180,7 @@ year = 2023,
 month = nov
 }
 ```
+
+## License 
+
+This package is is distributed under the terms of the [MIT license](https://github.com/adobe/trustmark/blob/main/LICENSE).

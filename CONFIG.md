@@ -10,9 +10,7 @@ The default configuration for **TrustMark** (variant Q, 100% strength, BCH_5 err
 
 This document outlines the main parameters for configuring TrustMark to tune these properties.
 
----
-
-## Model Variant
+## Model variant
 
 **TrustMark** ships with four model variants (**B**, **C**, **P**, and **Q**) that may be selected when instantiating TrustMark.  All encode/decode calls on the object will use this variant.
 

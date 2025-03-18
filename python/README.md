@@ -26,7 +26,7 @@ For the JavaScript implementation, a Chromium browser automatically uses WebGPU,
 
 Packaged TrustMark models and code are trained to encode a payload of 100 bits.
 
-To promote interoperability, use the data schema implemented in `python/datalayer`.  This enables you to choose an error correction level over the raw 100 bits of payload.
+To promote interoperability, use the data schema implemented in `python/datalayer.py`.  This enables you to choose an error correction level over the raw 100 bits of payload.
 
 ### Modes
 

@@ -1,5 +1,6 @@
-
+<div class="github-only" >
 # TrustMark FAQ
+</div>
 
 Frequently asked questions for general users and implementors of the TrustMark image watermarking algorithm described in the [official paper](https://arxiv.org/abs/2311.18297) and [code repository](https://github.com/adobe/trustmark).
 

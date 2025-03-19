@@ -1,18 +1,19 @@
-# TrustMark JavaScript Demonstrator
+# TrustMark JavaScript example
 
-The JavaScript-based demonstrator is an example JavaScript implementation of decoding TrustMark watermarks embedded in images. The aim is to provide a minimal example for developers to build client-side JavaScript applications, such as for browser extensions.
+The [`js`](https://github.com/adobe/trustmark/tree/main/js) directory contains an example JavaScript implementation of decoding TrustMark watermarks embedded in images. It provides a minimal example of a client-side JavaScript application, would could be applied, for example, to a browser extension.
 
 ## Overview
 
 The example consists of key modules that handle image preprocessing, watermark detection, and data decoding. It supports the `Q` variant of the TrustMark watermarking schema.
 
+NOTE: The TrustMark JavaScript implementation only decodes watermarked images, in contrast to the Python implementation, which can both encode and decode.
+
 ## Components
 
 This example consists of a simple HTML file, `index.html` that loads two JavaScript files:
 
-- [`tm_watermark.js`](https://github.com/adobe/trustmark/blob/main/js/tm_watermark.js), the core module that handles watermark detection and decoding and defines key functions for processing images and extracting watermark data.
-  - `TRUSTMARK_VARIANT`: Specifies the TrustMark model variant.
-- [`tm_datalayer.js`](https://github.com/adobe/trustmark/blob/main/js/tm_datalayer.js), containing the code that handles data decoding and schema-specific processing.  It also implements error correction and interpretation of binary watermark data.
+- [`tm_watermark.js`](https://github.com/adobe/trustmark/blob/main/js/tm_watermark.js), the core module that handles watermark detection and decoding and defines key functions for processing images and extracting watermark data. `TRUSTMARK_VARIANT` specifies the TrustMark model variant.
+- [`tm_datalayer.js`](https://github.com/adobe/trustmark/blob/main/js/tm_datalayer.js) handles data decoding and schema-specific processing.  It also implements error correction and interpretation of binary watermark data.
 
 If GPU compute is available (if you're using Google Chrome, check `chrome://gpu`), then the code will automatically use WebGPU to process the ONNX models.  If you use WebGPU it will only run in a secure context, which means on localhost or an HTTPS link.  You can start a local HTTPS server by running the `server.py` script and a suitable OpenSSL certificate in `server.pem`.
 
@@ -36,6 +37,7 @@ To run the example:
     python -m http.server 8000
     ```
 1. Open `index.html` in a browser to run the example.
+1. Drag and drop images (for example from the provided [`images`](https://github.com/adobe/trustmark/tree/main/images) directory) onto the indicated area in the web page, which will display information if the image contains a TrustMark watermark (see example below).
 
 To use the code in your own project, simply include the two JavaScript files as usual.
 
@@ -44,17 +46,20 @@ To use the code in your own project, simply include the two JavaScript files as 
 For an image containing a TrustMark watermark:
 
 ```
-Watermark Found (BCH_SUPER):
-10100110100000110110111011011010011000111110010010000010111011111101
-C2PA Info:
+[4:12:48 PM] Decoding watermark...
+[4:12:48 PM] Watermark Found (BCH_5):
+1101101111100111100111100101110001111100101100101111010000000
+C2PA Assertion:
 {
-  "alg": "com.adobe.trustmark.Q",
-  "blocks": [
-    {
-      "scope": {},
-      "value": "2*10100110100000110110111011011010011000111110010010000010111011111101"
-    }
-  ]
+  "c2pa.soft-binding": {
+    "alg": "com.adobe.trustmark.Q",
+    "blocks": [
+      {
+        "scope": {},
+        "value": "1*1101101111100111100111100101110001111100101100101111010000000"
+      }
+    ]
+  }
 }
 ```
 

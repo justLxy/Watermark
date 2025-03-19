@@ -48,7 +48,7 @@ Set the error correction level over the raw 100 bits of payload to help maintain
 Set the error correction level when you initially instantiate the encoder.
 
 
-### Supported Modes
+### Supported modes
 
 - `Encoding.BCH_5`  
   Protected payload of 61 bits (+ 35 ECC bits) – allows for 5 bit flips
@@ -72,10 +72,8 @@ Having selected an appropriate model and strength, you are implicitly selecting 
 TrustMark generates residuals at 256 x 256 and then scales/blends them into the original image. Several derivative papers have adopted this universal resolution-scaling trick.
 
 - If the original image is extremely long/thin (aspect ratio beyond 2:1), the residual watermark will degrade when scaled.  
-- TrustMark addresses this by automatically centre-cropping the image to a square if the aspect ratio exceeds 2.0.  
-  - Example: For a 1000 x 200 image, only a 200 x 200 region in the center carries the watermark.
-- The aspect ratio limit can be overridden via the ASPECT_RATIO_LIM parameter.
-  - Setting it to 1.0 always forces centre-crop behavior (useful for content platforms that square-crop images).  This is the default when using model variant **P**.
+- TrustMark addresses this by automatically center-cropping the image to a square if the aspect ratio exceeds 2.0.  For example, for a 1000 x 200 image, only a 200 x 200 region in the center carries the watermark.
+- The aspect ratio limit can be overridden via the ASPECT_RATIO_LIM parameter. Setting it to 1.0 always forces center-crop behavior (useful for content platforms that square-crop images).  This is the default when using model variant **P**.
 
 ## Do not concentrate watermarks
 
@@ -90,10 +88,3 @@ Some derivative works have tried to improve PSNR by "zero padding" or concentrat
 - In some extreme cases, PSNR can reach 55–60 dB but at the cost of noticeable artifacts in that smaller region.
 
 **In summary**: While the functionality exists for comparison purposes, it’s not recommended for production. High concentration setting yields high PSNR but paradoxically more visible artifacts in the watermarked area.
-
-
-
-
-
-
-

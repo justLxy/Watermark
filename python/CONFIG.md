@@ -2,17 +2,17 @@
 
 ## Overview
 
-The default configuration for TrustMark (variant Q, 100% strength, BCH_5 error correction) is sufficient for most use cases. All watermarking algorithms trade off between three properties:
+All watermarking algorithms trade off between three properties:
 
 - **Capacity (bits)**  
 - **Robustness (to various transformations)**  
 - **Visibility (of watermark)**
 
-This document outlines the main parameters for configuring TrustMark to tune these properties.
+This document explains how to configure TrustMark to tune these properties, however the default configuration for TrustMark (variant Q, 100% strength, BCH_5 error correction) is sufficient for most use cases. 
 
 ## Model variant
 
-TrustMark ships with four model variants (**B**, **C**, **P**, and **Q**) that may be selected when instantiating TrustMark.  All encode/decode calls on the object will use this variant.
+TrustMark has four model variants (**B**, **C**, **P**, and **Q**) that may be selected when instantiating TrustMark.  All encode/decode calls on the object will use this variant.
 
 In general, we recommend using **P** or **Q**:
 - **P** is useful for creative applications where very high visual quality is required.  
@@ -29,11 +29,11 @@ In general, we recommend using **P** or **Q**:
 
 ## Watermark strength
 
-Watermark strength `WM_STRENGTH` is an optional parameter that you can provide when encoding (at runtime).
-Its default value is `1.0`, and changing it provides a trade-off between **robustness** and **visibility**.
+Set the optional `WM_STRENGTH` parameter when encoding (at runtime).
+Its default value is `1.0`, and changing it provides a trade-off between **robustness** and **visibility**:
 
-- Raising its value (for example, to `1.5`) improves robustness (so, for example, the watermark survives printing) but increases the likelihood of ripple artifacts.  
-- Lowering its value (for example, to `0.8`) reduces any likelihood of artifacts but compromises on robustness; however it still survives lower noise, screenshotting, or social media.
+- Raising its value (for example, to 1.5) improves robustness (so, for example, the watermark survives printing) but increases the likelihood of ripple artifacts.  
+- Lowering its value (for example, to 0.8) reduces any likelihood of artifacts but compromises on robustness; however it still survives lower noise, screenshotting, or social media.
 
 For example:
 
@@ -43,29 +43,39 @@ encoded_image = tm.encode(input_image, payload="example", WM_STRENGTH=1.5)
 
 ## Error correction level
 
-Set the error correction level over the raw 100 bits of payload to help maintain reliability under transformations or noise.
+TrustMark encodes a payload (the watermark data embedded within the image) of 100 bits.
+The data schema implemented in `python/datalayer.py` enables you to choose an error correction level over the raw 100 bits of payload to maintain reliability under transformations or noise. 
 
-Set the error correction level when you initially instantiate the encoder.
+### Encoding modes
 
+Set the error correction level using one of the four encoding modes.
 
-### Supported modes
+The following table describes TrustMark's encoding modes:
 
-- `Encoding.BCH_5`  
-  Protected payload of 61 bits (+ 35 ECC bits) – allows for 5 bit flips
-- `Encoding.BCH_4`  
-  Protected payload of 68 bits (+ 28 ECC bits) – allows for 4 bit flips
-- `Encoding.BCH_3`  
-  Protected payload of 75 bits (+ 21 ECC bits) – allows for 3 bit flips
-- `Encoding.BCH_SUPER`  
-  Protected payload of 40 bits (+ 56 ECC bits) – allows for 8 bit flips
+| Encoding | Protected payload | Number of bit flips allowed |
+|----------|-------------------|-----------------------------|
+| `Encoding.BCH_5` | 61 bits (+ 35 ECC bits) | 5  |
+| `Encoding.BCH_4` | 68 bits (+ 28 ECC bits) | 4  |
+| `Encoding.BCH_3` | 75 bits (+ 21 ECC bits) | 3  |
+| `Encoding.BCH_SUPER` | 40 bits (+ 56 ECC bits) | 8 |
 
-For example, instantiate the encoder with:
+Specify the mode when you instantiate the encoder, as follows:
 
-```python
-tm = TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.BCH_5)
+```py
+tm=TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.<ENCODING>)
 ```
 
-Having selected an appropriate model and strength, you are implicitly selecting the level of robustness and visibility of the watermark. If you have chosen to reduce robustness for lower visibility, you can regain some robustness by increasing error correction (at the cost of payload capacity).  Note that even 40 bits gives a key space of around one trillion.
+Where `<ENCODING>` is `BCH_5`, `BCH_4`, `BCH_3`, or `BCH_SUPER`.
+
+For example:
+
+```py
+tm=TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.BCH_5)
+```
+
+The decoder automatically detects the data schema in a watermark, so you can choose the level of robustness that best suits your use case.
+
+Selecting the model and strength implicitly selects the level of robustness and visibility of the watermark. If you have reduced robustness for lower visibility, you can regain some robustness by increasing error correction (at the cost of payload capacity). Note that even 40 bits gives a key space of around one trillion.
 
 ## Center cropping
 

@@ -14,6 +14,7 @@ import numpy as np
 
 
 #EXAMPLE_FILE = '../images/ufo_240.jpg'     # JPEG example
+#EXAMPLE_FILE = '../images/ghost.png'        # PNG RGBA example
 EXAMPLE_FILE = '../images/ripley.jpg'     # JPEG example
 
 # Available modes: Q=balance, P=high visual quality, C=compact decoder, B=base from paper

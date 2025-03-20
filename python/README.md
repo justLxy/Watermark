@@ -1,6 +1,6 @@
 # TrustMark
 
-This repository contains the official, open source implementation of TrustMark watermarking for the Content Authenticity Initiative (CAI) as described in [**TrustMark - Universal Watermarking for Arbitrary Resolution Images**](https://arxiv.org/abs/2311.18297) by [Tu Bui](https://www.surrey.ac.uk/people/tu-bui)[^1], [Shruti Agarwal](https://research.adobe.com/person/shruti-agarwal/)[^2], and [John Collomosse](https://www.collomosse.com)[^1] [^2].
+This repository contains the official, open source implementation of TrustMark watermarking for the Content Authenticity Initiative (CAI) as described in [**TrustMark - Universal Watermarking for Arbitrary Resolution Images**](https://arxiv.org/abs/2311.18297) (`arXiv:2311.18297`) by [Tu Bui](https://www.surrey.ac.uk/people/tu-bui)[^1], [Shruti Agarwal](https://research.adobe.com/person/shruti-agarwal/)[^2], and [John Collomosse](https://www.collomosse.com)[^1] [^2].
 
 [^1]: [DECaDE](https://decade.ac.uk/) Centre for the Decentralized Digital Economy, University of Surrey, UK.
 
@@ -10,17 +10,15 @@ This repository contains the official, open source implementation of TrustMark w
 
 This repository contains the following directories:
 
-- `/python`: Python implementation of TrustMark for encoding, decoding and removing image watermarks (using PyTorch).  For more information, see [TrustMark - Python implementation](./python/README.md).
-- `/js`: Javascript implementation of TrustMark decoding of image watermarks (using ONNX).  For more information, see [TrustMark - JavaScript implementation](./python/README.md).
-- `/c2pa`: Python example of how to indicate the presence of a TrustMark watermark in a C2PA manifest.
+- `/python`: Python implementation of TrustMark for encoding, decoding and removing image watermarks (using PyTorch). For information on configuring TrustMark in Python, see [Configuring TrustMark](CONFIG.md). 
+- `/js`: Javascript implementation of TrustMark decoding of image watermarks (using ONNX).  For more information, see [TrustMark - JavaScript implementation](../js/README.md).
+- `/c2pa`: Python example of how to indicate the presence of a TrustMark watermark in a C2PA manifest. For more information, see [Using TrustMark with C2PA](../c2pa/README.md).
+
+Model files (**ckpt** PyTorch file for Python and **onnx** ONNX file for JavaScript) are not packaged in this repository due to their size, but are downloaded upon first use.  See the code for [URLs and md5 hashes](https://github.com/adobe/trustmark/blob/4ef0dde4abd84d1c6873e7c5024482f849db2c73/python/trustmark/trustmark.py#L30) for a direct download link.
 
 More information:
-- For answers to common questions, see the [FAQ](FAQ.md).
+- For answers to common questions, see the [FAQ](../FAQ.md).
 - For information on configuring TrustMark in Python, see [Configuring TrustMark](CONFIG.md).
-
-### Model files
-
-The PyTorch model file (`ckpt`) ONNX model file are not packaged in this repo due to size, but are downloaded upon first use.  See the code for [URLs and md5 hashes](https://github.com/adobe/trustmark/blob/4ef0dde4abd84d1c6873e7c5024482f849db2c73/python/trustmark/trustmark.py#L30) for a direct download link.
 
 ## Installation
 
@@ -112,64 +110,22 @@ pip install .
 
 For the JavaScript implementation, a Chromium browser automatically uses WebGPU, if available.
 
-## TrustMark data schema
+## Data schema
 
-Packaged TrustMark models and code are trained to encode a payload of 100 bits.
+TrustMark encodes a payload (the watermark data embedded within the image) of 100 bits.
+You can configure an error correction level over the raw 100 bits of payload to maintain reliability under transformations or noise. 
 
-To promote interoperability, use the data schema implemented in `python/datalayer.py`.  This enables you to choose an error correction level over the raw 100 bits of payload.
+In payload encoding, the version bits comprise two reserved (unused) bits, and two bits encoding an integer value 0-3 that specifies the data schema as follows: 
+- 0: BCH_SUPER
+- 1: BCH_5
+- 2: BCH_4
+- 3: BCH_3
 
-### Encoding modes
-
-The following table describes TrustMark's encoding modes:
-
-| Encoding | Protected payload | Number of bit flips allowed |
-|----------|-------------------|-----------------------------|
-| `Encoding.BCH_5` | 61 bits (+ 35 ECC bits) | 5 bit |
-| `Encoding.BCH_4` | 68 bits (+ 28 ECC bits) | 4 bit |
-| `Encoding.BCH_3` | 75 bits (+ 21 ECC bits) | 3 bit |
-| `Encoding.BCH_SUPER` | 40 bits (+ 56 ECC bits) | 8 bit|
-
-Specify the mode when you instantiate the encoder, as follows:
-
-```py
-tm=TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.<ENCODING>)
-```
-
-Where `<ENCODING>` is `BCH_5`, `BCH_4`, `BCH_3`, or `BCH_SUPER`.
-
-For example:
-
-```py
-tm=TrustMark(verbose=True, model_type='Q', encoding_type=TrustMark.Encoding.BCH_5)
-```
-
-The decoder will automatically detect the data schema in a given watermark, allowing you to choose the level of robustness that best suits your use case.
-
-### Payload encoding
-
-The raw 100 bits break down into D+E+V=100 bits, where D is the protect payload (for example, 61) and E are the error correction parity bits (e.g. 35) and V are the version bits (always four). The version bits comprise two reserved (unused) bits, and two bits encoding an $.
-  
-## Using with C2PA
-
-### Durable Content Credentials
-
-Open standards such as Content Credentials, developed by the [Coalition for Content Provenance and Authenticity(C2PA)](https://c2pa.org/), describe ways to encode information about an image’s history or _provenance_, such as how and when it was made. This information is usually carried within the image’s metadata.
-
-However, C2PA metadata can be accidentally removed when the image is shared through platforms that do not yet support the standard. If a copy of that metadata is retained in a database, the TrustMark identifier carried inside the watermark can be used as a key to look up that information from the database. This is referred to as a [_Durable Content Credential_](https://contentauthenticity.org/blog/durable-content-credentials) and the technical term for the identifier is a _soft binding_.
-
-When used as a soft binding, TrustMark should be used to encode a random identifier via one of the Encoding types `BCH_n` described in the data schema described in the previous section of this document.  Example `c2pa/c2pa_watermark_example.py` provides an example use of TrustMark, and also how the identifier should be reflected within the C2PA metadata (manifest) via a 'soft binding assertion'.
-
-For more information, see the [FAQ](FAQ.md#how-does-trustmark-align-with-provenance-standards-such-as-the-c2pa).
-
-### Signpost watermark
-
-TrustMark [coexists well with most other image watermarks](https://arxiv.org/abs/2501.17356) and so can be used as a _signpost_ to indicate the co-presence of another watermarking technology.  This can be helpful, sinace as an open technology, TrustMark can be used to indicate (signpost) which decoder to obtain and run on an image to decode a soft binding identifier for C2PA.
-
-In this mode the encoding should be `Encoding.BCH_SUPER` and the payload contain an integer identifier that describes the co-present watermark.  The integer should be taken from the registry of C2PA approved watermarks listed in this normative C2PA [softbinding-algorithms-list](https://github.com/c2pa-org/softbinding-algorithms-list) repository.
+For more details and information on configuring the encoding mode in Python, see [Configuring TrustMark](CONFIG.md). 
 
 ## Citation
 
-If you find this work useful we request you please cite the repository and/or TrustMark paper as follows:
+If you find this work useful, please cite the repository and/or TrustMark paper as follows:
 
 ```
 @article{trustmark,

@@ -1,0 +1,35 @@
+[package]
+name = "trustmark"
+description = "A Rust implementation of TrustMark"
+version = "0.1.0"
+authors = [
+  "John Collomosse <collomos@adobe.com>",
+  "Maurice Fisher <mfisher@adobe.com>",
+  "Andrew Halle <ahalle@adobe.com>",
+]
+rust-version = "1.75.0"
+edition = "2021"
+license = "MIT"
+keywords = ["trustmark", "cv", "watermark"]
+categories = ["multimedia::images"]
+repository = "https://github.com/adobe/trustmark"
+
+[workspace]
+members = ["crates/*"]
+
+[[bench]]
+name = "load"
+harness = false
+
+[[bench]]
+name = "encode"
+harness = false
+
+[dependencies]
+image = "0.24"
+ndarray = "0.16"
+ort = "=2.0.0-rc.8"
+thiserror = "1"
+
+[dev-dependencies]
+criterion = "0.5"

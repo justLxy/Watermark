@@ -287,6 +287,12 @@ async function runwmark(base64Image) {
          c2padata: watermark.softBindingInfo,
       };
    }
+   else {
+      return {
+         watermark_present: false,
+      }
+   }
+
 
 }
 

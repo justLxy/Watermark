@@ -1,27 +1,24 @@
-# TrustMark — Rust
+# TrustMark — Rust implementation
 
-An implementation of TrustMark watermarking for the Content Authenticity Initiative (CAI) in
-Rust, as described in:
+<div style={{display: 'none'}}>
 
---------------------------------------------------------------------------------
+An implementation in Rust of TrustMark watermarking, as described in [**TrustMark - Universal Watermarking for Arbitrary Resolution Images**](https://arxiv.org/abs/2311.18297) (`arXiv:2311.18297`) by [Tu Bui](https://www.surrey.ac.uk/people/tu-bui)[^1], [Shruti Agarwal](https://research.adobe.com/person/shruti-agarwal/)[^2], and [John Collomosse](https://www.collomosse.com)[^1] [^2].
 
-**TrustMark - Universal Watermarking for Arbitrary Resolution Images**
+[^1]: [DECaDE](https://decade.ac.uk/) Centre for the Decentralized Digital Economy, University of Surrey, UK.
 
-<https://arxiv.org/abs/2311.18297>
+[^2]: [Adobe Research](https://research.adobe.com/), San Jose, CA.
 
-[Tu Bui]<sup>1</sup>, [Shruti Agarwal]<sup>2</sup>, [John Collomosse]<sup>1,2</sup>
+</div>
 
-<sup>1</sup>DECaDE Centre for the Decentralized Digital Economy, University of Surrey, UK.\
-<sup>2</sup>Adobe Research, San Jose CA.
+## Differences from the Python version
 
---------------------------------------------------------------------------------
+This crate implements a subset of the functionality of the Python version. Open
+an issue if there's something in the Python version that would be useful in this
+crate!
 
-This is a re-implementation of the [trustmark] Python library.
-
-[Tu Bui]: https://www.surrey.ac.uk/people/tu-bui
-[Shruti Agarwal]: https://research.adobe.com/person/shruti-agarwal/
-[John Collomosse]: https://www.collomosse.com/
-[trustmark]: https://pypi.org/project/trustmark/
+<!--
+We need to outline what functionality IS implemented!  Or conversely, what is not.
+-->
 
 ## Quick start
 
@@ -34,16 +31,16 @@ cargo add trustmark
 From the workspace root, run:
 
 ```
-$ cargo xtask fetch-models
+cargo xtask fetch-models
 ```
 
 ### Run the CLI
 
 From the workspace root, run:
 
-```
-$ cargo run --release -p trustmark-cli -- -m ./models encode -i ./images/bfly_rgba.png -o ./images/encoded.png
-$ cargo run --release -p trustmark-cli -- -m ./models decode -i ./images/encoded.png
+```sh
+cargo run --release -p trustmark-cli -- -m ./models encode -i ./images/bfly_rgba.png -o ./images/encoded.png
+cargo run --release -p trustmark-cli -- -m ./models decode -i ./images/encoded.png
 ```
 
 ### Use the library
@@ -74,8 +71,3 @@ To run the Python benchmarks, run the following from the workspace root:
 benches/load.sh && benches/encode.sh
 ```
 
-## Differences from the Python version
-
-This crate implements a subset of the functionality of the Python version. Open
-an issue if there's something in the Python version that would be useful in this
-crate!

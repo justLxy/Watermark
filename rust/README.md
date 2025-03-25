@@ -12,38 +12,48 @@ An implementation in Rust of TrustMark watermarking, as described in [**TrustMar
 
 ## Differences from the Python version
 
-This crate implements a subset of the functionality of the Python version. Open
-an issue if there's something in the Python version that would be useful in this
-crate!
+This crate implements a subset of the functionality of the Python version. Encoding and decoding of watermarks for all variants in binary mode is implemented. The same levels of error correction are available.
 
-<!--
-We need to outline what functionality IS implemented!  Or conversely, what is not.
--->
+Text mode watermarks and watermark removal are not implemented.
+
+Open an issue if there's something in the Python version that would be useful in this crate!
 
 ## Quick start
 
-```
-cargo add trustmark
-```
-
 ### Download models
 
-From the workspace root, run:
+In order to encode or decode watermarks, you'll need to fetch the model files. The models are distributed as ONNX files.
+
+From the workspace root (e.g. from the `rust/` directory), run:
 
 ```
 cargo xtask fetch-models
 ```
 
+The models will be downloaded to the `models/` directory and can be moved wherever you need from there.
+
 ### Run the CLI
+
+As a first step, you can run the `trustmark-cli` which is defined in this repository.
 
 From the workspace root, run:
 
 ```sh
-cargo run --release -p trustmark-cli -- -m ./models encode -i ./images/bfly_rgba.png -o ./images/encoded.png
-cargo run --release -p trustmark-cli -- -m ./models decode -i ./images/encoded.png
+cargo run --release -p trustmark-cli -- -m ./models encode -i ../images/ghost.png -o ../images/encoded.png
+cargo run --release -p trustmark-cli -- -m ./models decode -i ../images/encoded.png
 ```
 
+If you have moved the models downloaded previously, pass the location where the models can be found in the `-m` parameter.
+
 ### Use the library
+
+Add `trustmark` to your project's `cargo` manifest with:
+
+```
+cargo add trustmark
+```
+
+A basic usage example of `trustmark` is:
 
 ```rust
 use trustmark::{Trustmark, Version, Variant};
@@ -57,7 +67,7 @@ let output = tm.encode("0010101".to_owned(), input, 0.95);
 
 ### Rust benchmarks
 
-To run the Rust benchmarks, run:
+To run the Rust benchmarks, run the following from the workspace root:
 
 ```
 cargo bench

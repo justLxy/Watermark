@@ -1,6 +1,12 @@
 # trustmark-cli
 
-A CLI wrapper for the `trustmark` crate.
+A CLI wrapper for the `trustmark` crate. Install this with
+
+```
+cargo install --locked --path .
+```
+
+Here is the output of `cargo run -- --help`:
 
 ```
 Usage: trustmark --models <MODELS> <COMMAND>
@@ -20,3 +26,5 @@ You'll need to download the models to somewhere. Consider running:
 ```
 cargo xtask fetch-models
 ```
+
+Note: the `models/` directory must exist.

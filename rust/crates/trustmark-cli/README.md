@@ -1,6 +1,6 @@
-# trustmark-cli
+# TrustMark CLI
 
-A CLI wrapper for the `trustmark` crate. 
+The Rust implementation includes a CLI wrapper for the `trustmark` crate.
 
 ## Installation
 
@@ -12,7 +12,7 @@ cargo install --locked --path .
 
 ### Downloading models 
 
-To use the CLI, you'll need to create a models directory and download the models, [if you haven't already done so](../../README.md#download-models). Enter these commands from the `trustmark/rust` directory:
+To use the CLI, you must first create a `models` directory and download the models, [if you haven't already done so](../../README.md#download-models). Enter these commands from the `trustmark/rust` directory:
 
 ```
 mkdir models
@@ -47,12 +47,12 @@ trustmark --models <MODELS> encode [OPTIONS] -i <INPUT> -o <OUTPUT>
 Options:
 
 | Option |  Description | Allowed Values |
-|--------|-------------|
+|--------|--------------|----------------|
 | `-i <INPUT>` | Path to the image to encode. | Relative file path. | 
 | `-o <OUTPUT>` | Path to file in which to save the watermarked image. | Relative file path. |
-| `-w, --watermark <WATERMARK>` | The watermark to encode.  | Any string. Defaults to random if not specified. |
-| `--version <VERSION>`  |  The BCH version to encode with. | One of BCH_SUPER, BCH_5, BCH_4, BCH_3. Defaults to `BchSuper`. |
-| `--variant <VARIANT>`  | The model variant to encode with. | ??  |
+| `-w, --watermark <WATERMARK>` | The watermark (payload) to encode.  | Any a binary string such as  `0101010101`. Only 0 and 1 characters are allowed. Maximum length is governed by the version selected.  Default is a random binary string. |
+| `--version <VERSION>`  |  The BCH version to encode with. | One of `BCH_SUPER` (default), `BCH_5`, `BCH_4`, or `BCH_3`. |
+| `--variant <VARIANT>`  | The model variant to encode with. | `Q` (default), `B`, `C`, and `P`. |
 | `-h, --help` | Display help information. | N/A |
 
 ### Decoding watermarks
@@ -64,9 +64,9 @@ trustmark --models <MODELS> decode [OPTIONS] -i <INPUT>
 ```
 
 | Option |  Description | Allowed Values |
-|--------|-------------|
+|--------|--------------|----------------|
 | `-i <INPUT>` | Path to the image to decode. | Relative file path. |
-| `--variant <VARIANT>`  | The model variant to decode with.  Must match variant used to encode the watermark. | ??  |
+| `--variant <VARIANT>`  | The model variant to decode with.  Must match variant used to encode the watermark. | `Q` (default), `B`, `C`, and `P`.  |
 | `-h, --help` | Display help information. | N/A |
 
 ## Examples

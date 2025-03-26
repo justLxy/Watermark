@@ -10,13 +10,11 @@ An implementation in Rust of TrustMark watermarking, as described in [**TrustMar
 
 </div>
 
-## Differences from the Python version
-
-This crate implements a subset of the functionality of the Python version. Encoding and decoding of watermarks for all variants in binary mode is implemented. The same levels of error correction are available.
+This crate implements a subset of the functionality of the TrustMark Python implementation, including encoding and decoding of watermarks for all variants in binary mode. The Rust implementation provides the same levels of error correction as the Python implementation.
 
 Text mode watermarks and watermark removal are not implemented.
 
-Open an issue if there's something in the Python version that would be useful in this crate!
+Open an issue if there's something in the Python version that want added to this crate!
 
 ## Quick start
 
@@ -24,13 +22,13 @@ Open an issue if there's something in the Python version that would be useful in
 
 In order to encode or decode watermarks, you'll need to fetch the model files. The models are distributed as ONNX files.
 
-From the workspace root (e.g. from the `rust/` directory), run:
+From the workspace root (the `rust/` directory), run:
 
 ```
 cargo xtask fetch-models
 ```
 
-The models will be downloaded to the `models/` directory and can be moved wherever you need from there.
+This command downloads models to the `models/` directory. You can move them from there as needed.
 
 ### Run the CLI
 
@@ -43,7 +41,7 @@ cargo run --release -p trustmark-cli -- -m ./models encode -i ../images/ghost.pn
 cargo run --release -p trustmark-cli -- -m ./models decode -i ../images/encoded.png
 ```
 
-If you have moved the models downloaded previously, pass the location where the models can be found in the `-m` parameter.
+The argument to the `-m` option is the path to the models downloaded; if you moved them, pass the relative file path as the option value.
 
 ### Use the library
 
@@ -53,7 +51,7 @@ Add `trustmark` to your project's `cargo` manifest with:
 cargo add trustmark
 ```
 
-A basic usage example of `trustmark` is:
+A basic example of using `trustmark` is:
 
 ```rust
 use trustmark::{Trustmark, Version, Variant};

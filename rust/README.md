@@ -80,4 +80,3 @@ To run the Python benchmarks, run the following from the workspace root:
 ```
 benches/load.sh && benches/encode.sh
 ```
-

@@ -12,11 +12,13 @@ This repository contains the following directories:
 
 - `/python`: Python implementation of TrustMark for encoding, decoding and removing image watermarks (using PyTorch). For information on configuring TrustMark in Python, see [Configuring TrustMark](python/CONFIG.md). 
 - `/js`: Javascript implementation of TrustMark decoding of image watermarks (using ONNX).  For more information, see [TrustMark - JavaScript implementation](js/README.md).
+- `/rust`: Rust implementation of TrustMark. for more information, see [TrustMark — Rust implementation](rust/README.md).
 - `/c2pa`: Python example of how to indicate the presence of a TrustMark watermark in a C2PA manifest. For more information, see [Using TrustMark with C2PA](c2pa/README.md).
 
 Model files (**ckpt** PyTorch file for Python and **onnx** ONNX file for JavaScript) are not packaged in this repository due to their size, but are downloaded upon first use.  See the code for [URLs and md5 hashes](https://github.com/adobe/trustmark/blob/4ef0dde4abd84d1c6873e7c5024482f849db2c73/python/trustmark/trustmark.py#L30) for a direct download link.
 
 More information:
+
 - For answers to common questions, see the [FAQ](FAQ.md).
 - For information on configuring TrustMark in Python, see [Configuring TrustMark](python/CONFIG.md).
 

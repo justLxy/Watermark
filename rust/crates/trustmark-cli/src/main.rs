@@ -39,6 +39,9 @@ enum Command {
         /// The model variant to encode with.
         #[arg(long)]
         variant: Option<Variant>,
+        /// If the requested output is JPEG, the quality to use for encoding.
+        #[arg(long)]
+        quality: Option<u8>,
     },
     /// Decode a watermark from an image
     Decode {
@@ -109,6 +112,7 @@ fn main() {
             output,
             watermark,
             version,
+            quality,
             ..
         } => {
             let input = image::open(input).unwrap();
@@ -120,15 +124,16 @@ fn main() {
             let format = ImageFormat::from_path(&output).unwrap();
             match format {
                 // JPEG encoding can make visual artifacts worse, so we encode with a higher
-                // quality than the default.
+                // quality than the default (or the quality requested by the user).
                 ImageFormat::Jpeg => {
+                    let quality = quality.unwrap_or(90);
                     let mut writer = OpenOptions::new()
                         .write(true)
                         .create(true)
                         .truncate(true)
                         .open(&output)
                         .unwrap();
-                    let encoder = JpegEncoder::new_with_quality(&mut writer, 99);
+                    let encoder = JpegEncoder::new_with_quality(&mut writer, quality);
                     encoded.to_rgba8().write_with_encoder(encoder).unwrap();
                 }
                 _ => {

@@ -53,6 +53,7 @@ Options:
 | `-w, --watermark <WATERMARK>` | The watermark (payload) to encode.  | Any a binary string such as  `0101010101`. Only 0 and 1 characters are allowed. Maximum length is governed by the version selected.  Default is a random binary string. |
 | `--version <VERSION>`  |  The BCH version to encode with. | One of `BCH_SUPER` (default), `BCH_5`, `BCH_4`, or `BCH_3`. |
 | `--variant <VARIANT>`  | The model variant to encode with. | `Q` (default), `B`, `C`, and `P`. |
+| `--quality <QUALITY>`  | If the requested output format is JPEG, the output quality to encode. | A number between 0 and 100. The default is 90. |
 | `-h, --help` | Display help information. | N/A |
 
 ### Decoding watermarks

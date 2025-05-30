@@ -71,7 +71,7 @@ impl TryFrom<ModelImage> for ort::Value<TensorValueType<f32>> {
             .resize_alg(ResizeAlg::Interpolation(
                 fast_image_resize::FilterType::Bilinear,
             ));
-        let modified_img = resize_img(&img, size, size, &options)?;
+        let modified_img = resize_img(&img, size, size, options)?;
 
         let img = modified_img.into_rgb32f().into_vec();
         let array = Array::from(img);
@@ -190,7 +190,7 @@ fn resize_img(
     img: &DynamicImage,
     width: u32,
     height: u32,
-    options: &ResizeOptions,
+    options: ResizeOptions,
 ) -> Result<DynamicImage, Error> {
     let mut modified_img = match img {
         DynamicImage::ImageLuma8(_) => DynamicImage::ImageLuma8(GrayImage::new(width, height)),
@@ -212,7 +212,7 @@ fn resize_img(
         // Technically unreachable, but we error for safety.
         _ => return Err(Error::Image),
     };
-    Resizer::new().resize(img, &mut modified_img, options)?;
+    Resizer::new().resize(img, &mut modified_img, &options)?;
 
     Ok(modified_img)
 }

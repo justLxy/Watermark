@@ -10,7 +10,8 @@ use std::cmp;
 use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
 use image::{
     imageops::{self, FilterType},
-    DynamicImage, GenericImageView as _, Pixel as _, Rgb32FImage,
+    DynamicImage, GenericImageView as _, GrayAlphaImage, GrayImage, ImageBuffer, Pixel as _,
+    Rgb32FImage, RgbImage, Rgba32FImage, RgbaImage,
 };
 use ndarray::{s, Array, ArrayD, Axis, ShapeError};
 use ort::TensorValueType;
@@ -65,18 +66,12 @@ impl TryFrom<ModelImage> for ort::Value<TensorValueType<f32>> {
     fn try_from(ModelImage(size, variant, img): ModelImage) -> Result<Self, Self::Error> {
         let (w, h, xpos, ypos) = center_crop_size_and_offset(variant, &img);
 
-        // `crop_imm` creates a copy of `DynamicImage` of a smaller size to maintain the original properties
-        // but hold a smaller allocation, additionally allowing it to be easily converted to RGB32F.
-        let mut modified_img = img.crop_imm(0, 0, size, size);
-        Resizer::new().resize(
-            &img,
-            &mut modified_img,
-            &ResizeOptions::new()
-                .crop(xpos as f64, ypos as f64, w as f64, h as f64)
-                .resize_alg(ResizeAlg::Interpolation(
-                    fast_image_resize::FilterType::Bilinear,
-                )),
-        )?;
+        let options = ResizeOptions::new()
+            .crop(xpos as f64, ypos as f64, w as f64, h as f64)
+            .resize_alg(ResizeAlg::Interpolation(
+                fast_image_resize::FilterType::Bilinear,
+            ));
+        let modified_img = resize_img(&img, size, size, &options)?;
 
         let img = modified_img.into_rgb32f().into_vec();
         let array = Array::from(img);
@@ -188,6 +183,38 @@ fn center_crop_size_and_offset(variant: Variant, img: &DynamicImage) -> (u32, u3
     } else {
         (width, height, 0, 0)
     }
+}
+
+/// Returns a new `DynamicImage`, resized to `width` by `height` with the specified `ResizeOptions`.
+fn resize_img(
+    img: &DynamicImage,
+    width: u32,
+    height: u32,
+    options: &ResizeOptions,
+) -> Result<DynamicImage, Error> {
+    let mut modified_img = match img {
+        DynamicImage::ImageLuma8(_) => DynamicImage::ImageLuma8(GrayImage::new(width, height)),
+        DynamicImage::ImageLumaA8(_) => {
+            DynamicImage::ImageLumaA8(GrayAlphaImage::new(width, height))
+        }
+        DynamicImage::ImageRgb8(_) => DynamicImage::ImageRgb8(RgbImage::new(width, height)),
+        DynamicImage::ImageRgba8(_) => DynamicImage::ImageRgba8(RgbaImage::new(width, height)),
+        DynamicImage::ImageLuma16(_) => DynamicImage::ImageLuma16(ImageBuffer::new(width, height)),
+        DynamicImage::ImageLumaA16(_) => {
+            DynamicImage::ImageLumaA16(ImageBuffer::new(width, height))
+        }
+        DynamicImage::ImageRgb16(_) => DynamicImage::ImageRgb16(ImageBuffer::new(width, height)),
+        DynamicImage::ImageRgba16(_) => DynamicImage::ImageRgba16(ImageBuffer::new(width, height)),
+        DynamicImage::ImageRgb32F(_) => DynamicImage::ImageRgb32F(Rgb32FImage::new(width, height)),
+        DynamicImage::ImageRgba32F(_) => {
+            DynamicImage::ImageRgba32F(Rgba32FImage::new(width, height))
+        }
+        // Technically unreachable, but we error for safety.
+        _ => return Err(Error::Image),
+    };
+    Resizer::new().resize(img, &mut modified_img, options)?;
+
+    Ok(modified_img)
 }
 
 /// Applies the mean padding boundary artifact mitigation.

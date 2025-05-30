@@ -7,6 +7,7 @@
 
 use std::cmp;
 
+use fast_image_resize::{ResizeAlg, ResizeOptions, Resizer};
 use image::{
     imageops::{self, FilterType},
     DynamicImage, GenericImageView as _, Pixel as _, Rgb32FImage,
@@ -52,18 +53,32 @@ pub enum Error {
     // We could not create an `ImageBuffer` with the requested array.
     #[error("invalid image")]
     Image,
+
+    /// We were unable to resize the input image.
+    #[error("resize error: {0}")]
+    Resize(#[from] fast_image_resize::ResizeError),
 }
 
 impl TryFrom<ModelImage> for ort::Value<TensorValueType<f32>> {
     type Error = Error;
 
-    fn try_from(ModelImage(size, variant, mut img): ModelImage) -> Result<Self, Self::Error> {
+    fn try_from(ModelImage(size, variant, img): ModelImage) -> Result<Self, Self::Error> {
         let (w, h, xpos, ypos) = center_crop_size_and_offset(variant, &img);
-        let img = img
-            .crop(xpos, ypos, w, h)
-            .resize_exact(size, size, FilterType::Triangle)
-            .to_rgb32f()
-            .into_vec();
+
+        // `crop_imm` creates a copy of `DynamicImage` of a smaller size to maintain the original properties
+        // but hold a smaller allocation, additionally allowing it to be easily converted to RGB32F.
+        let mut modified_img = img.crop_imm(0, 0, size, size);
+        Resizer::new().resize(
+            &img,
+            &mut modified_img,
+            &ResizeOptions::new()
+                .crop(xpos as f64, ypos as f64, w as f64, h as f64)
+                .resize_alg(ResizeAlg::Interpolation(
+                    fast_image_resize::FilterType::Bilinear,
+                )),
+        )?;
+
+        let img = modified_img.into_rgb32f().into_vec();
         let array = Array::from(img);
 
         // The `image` crate normalizes to `[0,1]`. Trustmark wants images normalized to `[-1,1]`.

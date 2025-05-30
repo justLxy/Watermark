@@ -134,7 +134,7 @@ fn main() {
                         .open(&output)
                         .unwrap();
                     let encoder = JpegEncoder::new_with_quality(&mut writer, quality);
-                    encoded.to_rgba8().write_with_encoder(encoder).unwrap();
+                    encoded.to_rgb8().write_with_encoder(encoder).unwrap();
                 }
                 _ => {
                     encoded.to_rgba8().save(&output).unwrap();
@@ -148,7 +148,7 @@ fn main() {
                 Err(trustmark::Error::CorruptWatermark) => {
                     println!("Corrupt or missing watermark")
                 }
-                err => panic!("{:?}", err),
+                err => panic!("{err:?}"),
             }
         }
     }

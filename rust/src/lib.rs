@@ -184,10 +184,9 @@ mod tests {
         Trustmark::new("./models", Variant::Q, Version::Bch5).unwrap();
     }
 
-    #[test]
-    fn roundtrip_ghost() {
+    fn roundtrip(path: impl AsRef<Path>) {
         let tm = Trustmark::new("./models", Variant::Q, Version::Bch5).unwrap();
-        let input = image::open("../images/ghost.png").unwrap();
+        let input = image::open(path.as_ref()).unwrap();
         let watermark = "1011011110011000111111000000011111011111011100000110110110111".to_owned();
         let encoded = tm.encode(watermark.clone(), input, 0.95).unwrap();
         encoded.to_rgba8().save("./test.png").unwrap();
@@ -197,14 +196,12 @@ mod tests {
     }
 
     #[test]
+    fn roundtrip_ghost() {
+        roundtrip("../images/ghost.png");
+    }
+
+    #[test]
     fn roundtrip_ufo() {
-        let tm = Trustmark::new("./models", Variant::Q, Version::Bch5).unwrap();
-        let input = image::open("../images/ufo_240.jpg").unwrap();
-        let watermark = "1011011110011000111111000000011111011111011100000110110110111".to_owned();
-        let encoded = tm.encode(watermark.clone(), input, 0.95).unwrap();
-        encoded.to_rgba8().save("./test.png").unwrap();
-        let input = image::open("./test.png").unwrap();
-        let decoded = tm.decode(input).unwrap();
-        assert_eq!(watermark, decoded);
+        roundtrip("../images/ufo_240.jpg");
     }
 }

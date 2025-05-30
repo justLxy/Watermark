@@ -148,7 +148,7 @@ fn main() {
                 Err(trustmark::Error::CorruptWatermark) => {
                     println!("Corrupt or missing watermark")
                 }
-                err => panic!("{:?}", err),
+                err => panic!("{err:?}"),
             }
         }
     }

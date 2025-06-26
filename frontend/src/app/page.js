@@ -8,6 +8,11 @@ const C2paDisplay = dynamic(() => import('../components/C2paDisplay'), {
   ssr: false,
 });
 
+// Dynamically import the CameraScanner component to avoid SSR issues  
+const CameraScanner = dynamic(() => import('../components/CameraScanner'), {
+  ssr: false,
+});
+
 // A reusable card component for consistent styling
 const Card = ({ title, children }) => (
   <div className="w-full bg-white shadow-lg rounded-xl p-8 space-y-6">
@@ -75,6 +80,7 @@ export default function HomePage() {
   // State for the "Decode & Verify" workflow
   const [decodeFile, setDecodeFile] = useState(null);
   const [decodeFileUrl, setDecodeFileUrl] = useState(null);
+  const [usingCamera, setUsingCamera] = useState(false);
 
   const handleEncodeFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -85,6 +91,11 @@ export default function HomePage() {
     setEncodedFile(null); // Clear previous results
     setEncodedFileUrl(null);
     setEncodeError('');
+  };
+
+  const handleCameraCapture = (file, url) => {
+    setDecodeFile(file);
+    setDecodeFileUrl(url);
   };
 
   const handleDecodeFileChange = (e) => {
@@ -224,7 +235,35 @@ export default function HomePage() {
 
         {/* --- DECODE CARD --- */}
         <Card title="Decode & Verify">
-          <FileInput id="decode-file" onChange={handleDecodeFileChange} />
+          <div className="flex space-x-2 mb-4">
+            <button 
+              onClick={() => setUsingCamera(false)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                !usingCamera 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              📁 Upload File
+            </button>
+            <button 
+              onClick={() => setUsingCamera(true)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                usingCamera 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              📷 Use Camera
+            </button>
+          </div>
+          
+          {usingCamera ? (
+            <CameraScanner onCapture={handleCameraCapture} />
+          ) : (
+            <FileInput id="decode-file" onChange={handleDecodeFileChange} />
+          )}
+          
           <ImageProvenancePreview imageUrl={decodeFileUrl} file={decodeFile} />
         </Card>
       </main>

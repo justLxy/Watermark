@@ -91,7 +91,7 @@ const C2paDisplay = ({ file }) => {
                   setDecodedWatermark(decodeData.watermark);
                 }
               }
-            } else {
+          } else {
               console.error('Decode fallback request failed.');
             }
           } catch (decodeError) {
@@ -255,14 +255,14 @@ const C2paDisplay = ({ file }) => {
   if (error) {
     return null;
   }
-  
+
   // Decide which manifest to display, prioritizing the one embedded in the file
   const activeManifestData = manifestStore || lookedUpManifest;
 
   // Render C2PA panel if a manifest is available (either embedded or looked up)
   if (activeManifestData) {
     const signatureInfoText = formatSignatureInfo(activeManifestData);
-    return (
+  return (
       <div className="absolute top-2 right-2 z-10">
         {/* C2PA Indicator */}
         <div 
@@ -273,10 +273,10 @@ const C2paDisplay = ({ file }) => {
             <cai-indicator className="drop-shadow-lg"></cai-indicator>
             <div className="absolute inset-0 bg-blue-400 rounded-full opacity-0 group-hover:opacity-20 blur-md transition-opacity duration-300"></div>
           </div>
-        </div>
-        
+      </div>
+
         {showPanel && (
-          <div className="absolute top-full right-0 mt-3 z-20 w-96 max-w-sm">
+          <div className="absolute top-full right-0 mt-3 z-20 w-72 sm:w-80 md:w-96 max-w-xs sm:max-w-sm">
             <div className="backdrop-blur-xl bg-white/95 border border-white/30 rounded-2xl shadow-2xl overflow-hidden">
               {/* Header */}
               <div className="relative">
@@ -293,15 +293,15 @@ const C2paDisplay = ({ file }) => {
                         </p>
                       )}
                     </div>
-                    <button 
+              <button
                       onClick={() => setShowPanel(false)} 
                       className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100/80 hover:bg-slate-200/80 transition-colors duration-200 group ml-3"
-                    >
+              >
                       <svg className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-800 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                    </button>
-                  </div>
+              </button>
+            </div>
                 </div>
               </div>
             
@@ -328,8 +328,8 @@ const C2paDisplay = ({ file }) => {
                       <pre className="p-4 bg-slate-900 text-green-400 text-xs overflow-auto max-h-48 font-mono">
                         {JSON.stringify(activeManifestData, null, 2)}
                       </pre>
-                    </div>
-                  )}
+                  </div>
+                )}
                 </div>
               </div>
             </div>
@@ -378,11 +378,11 @@ const C2paDisplay = ({ file }) => {
                         <div className="flex flex-col">
                           <span className="text-xs text-slate-500 uppercase tracking-wider">Schema</span>
                           <span className="text-slate-700">{decodedWatermark.schema}</span>
-                        </div>
-                    </div>
-                </div>
+              </div>
             </div>
-        )}
+          </div>
+        </div>
+      )}
       </div>
     );
   }

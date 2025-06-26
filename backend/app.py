@@ -325,6 +325,7 @@ def decode_image():
     """
     Decodes a C2PA manifest and a watermark from an image.
     Expects a multipart form with an 'image' field.
+    Cleans up the temporary file after the request is complete.
     """
     if 'image' not in request.files:
         return "No image file provided", 400
@@ -334,50 +335,57 @@ def decode_image():
     if file.filename == '':
         return "No selected file", 400
 
-    # 1. Save uploaded file
-    base_filename = "".join(random.choices(string.ascii_lowercase + string.digits, k=16))
-    file_ext = os.path.splitext(file.filename)[1]
-    input_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_decode{file_ext}")
-    file.save(input_path)
-
-    decoded_data = {}
-
-    # 2. Decode C2PA manifest
+    input_path = None
     try:
-        c2pa_tool_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'c2pa', 'c2patool'))
-        if not os.path.exists(c2pa_tool_path):
-            c2pa_tool_path = 'c2patool'
+        # 1. Save uploaded file
+        base_filename = "".join(random.choices(string.ascii_lowercase + string.digits, k=16))
+        file_ext = os.path.splitext(file.filename)[1]
+        input_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_decode{file_ext}")
+        file.save(input_path)
+
+        decoded_data = {}
+
+        # 2. Decode C2PA manifest
+        try:
+            c2pa_tool_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'c2pa', 'c2patool'))
+            if not os.path.exists(c2pa_tool_path):
+                c2pa_tool_path = 'c2patool'
+                
+            cmd = [c2pa_tool_path, input_path]
+            result = subprocess.run(cmd, capture_output=True, text=True)
             
-        cmd = [c2pa_tool_path, input_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout:
+                decoded_data['c2pa_manifest'] = json.loads(result.stdout)
+            else:
+                decoded_data['c2pa_manifest'] = None
+
+        except Exception as e:
+            print(f"Could not run c2patool: {e}")
+            decoded_data['c2pa_manifest'] = {'error': str(e)}
+
+        # 3. Decode watermark
+        try:
+            stego_image = Image.open(input_path).convert('RGB')
+            wm_secret, wm_present, wm_schema = tm.decode(stego_image, MODE='binary')
+
+            decoded_data['watermark'] = {
+                'present': wm_present,
+                'secret': wm_secret,
+                'schema': wm_schema
+            }
+        except Exception as e:
+            decoded_data['watermark'] = {'error': str(e)}
+
+        # 4. Return results
+        return jsonify(decoded_data)
         
-        if result.returncode == 0 and result.stdout:
-            decoded_data['c2pa_manifest'] = json.loads(result.stdout)
-        else:
-            # Not an error, might just not have a manifest
-            decoded_data['c2pa_manifest'] = None
-
-    except Exception as e:
-        # If c2patool fails, we can still try to decode the watermark
-        print(f"Could not run c2patool: {e}")
-        decoded_data['c2pa_manifest'] = {'error': str(e)}
-
-
-    # 3. Decode watermark
-    try:
-        stego_image = Image.open(input_path).convert('RGB')
-        wm_secret, wm_present, wm_schema = tm.decode(stego_image, MODE='binary')
-
-        decoded_data['watermark'] = {
-            'present': wm_present,
-            'secret': wm_secret,
-            'schema': wm_schema
-        }
-    except Exception as e:
-        decoded_data['watermark'] = {'error': str(e)}
-
-    # 4. Return results
-    return jsonify(decoded_data)
+    finally:
+        if input_path and os.path.exists(input_path):
+            try:
+                os.remove(input_path)
+                print(f"Cleaned up decode file: {input_path}")
+            except Exception as e_clean:
+                print(f"Failed to clean up file {input_path}: {e_clean}", file=sys.stderr)
 
 if __name__ == '__main__':
     init_db()  # Ensure DB is ready before starting the app

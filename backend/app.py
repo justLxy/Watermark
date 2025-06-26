@@ -5,6 +5,7 @@ import random
 import string
 import subprocess
 import io
+import sqlite3
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PIL import Image
@@ -19,6 +20,7 @@ from trustmark import TrustMark
 # --- Configuration ---
 UPLOAD_FOLDER = 'uploads'
 OUTPUT_FOLDER = 'outputs'
+DATABASE = 'provenance.db'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
@@ -26,6 +28,21 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200 MB upload limit
 CORS(app)
+
+# --- Database Initialization ---
+def init_db():
+    """Initializes the database and creates the table if it doesn't exist."""
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS provenance (
+            watermark_id TEXT PRIMARY KEY,
+            manifest_json TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 # --- TrustMark Initialization ---
 # Available modes: Q=balance, P=high visual quality, C=compact decoder, B=base from paper
@@ -215,10 +232,30 @@ def encode_image():
 
         # 3. Build and save manifest
         manifest = build_manifest(watermark_id, input_path, form_data)
-        manifest = manifest_add_signing(manifest)
+        
+        # --- Store manifest in database ---
+        try:
+            conn = sqlite3.connect(DATABASE)
+            cursor = conn.cursor()
+            # Use REPLACE to handle cases where an ID might be regenerated, though unlikely
+            cursor.execute(
+                "REPLACE INTO provenance (watermark_id, manifest_json) VALUES (?, ?)",
+                (watermark_id, json.dumps(manifest))
+            )
+            conn.commit()
+            print(f"Successfully stored manifest for watermark ID: {watermark_id}")
+        except sqlite3.Error as db_error:
+            print(f"Database error: {db_error}", file=sys.stderr)
+            # Decide if you want to fail the request or just log the error
+        finally:
+            if conn:
+                conn.close()
+        # --- End of database storage ---
+
+        manifest_with_signing = manifest_add_signing(manifest.copy()) # Use a copy for signing
         manifest_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}.json")
         with open(manifest_path, 'w') as f:
-            json.dump(manifest, f, indent=4)
+            json.dump(manifest_with_signing, f, indent=4)
         cleanup_paths.append(manifest_path)
 
         # 4. Use c2patool to attach manifest
@@ -256,6 +293,32 @@ def encode_image():
                     os.remove(path)
             except Exception as e_clean:
                 print(f"Failed to clean up file {path}: {e_clean}", file=sys.stderr)
+
+@app.route('/lookup-by-watermark', methods=['POST'])
+def lookup_by_watermark():
+    """Looks up provenance data from the database using a watermark ID."""
+    data = request.get_json()
+    if not data or 'watermark_id' not in data:
+        return jsonify({'error': 'watermark_id is required'}), 400
+
+    watermark_id = data['watermark_id']
+    
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT manifest_json FROM provenance WHERE watermark_id = ?", (watermark_id,))
+        result = cursor.fetchone()
+    except sqlite3.Error as e:
+        return jsonify({'error': f'Database lookup failed: {e}'}), 500
+    finally:
+        if conn:
+            conn.close()
+
+    if result:
+        manifest_data = json.loads(result[0])
+        return jsonify(manifest_data)
+    else:
+        return jsonify({'error': 'No data found for this watermark ID'}), 404
 
 @app.route('/decode', methods=['POST'])
 def decode_image():
@@ -317,4 +380,5 @@ def decode_image():
     return jsonify(decoded_data)
 
 if __name__ == '__main__':
+    init_db()  # Ensure DB is ready before starting the app
     app.run(debug=True, port=5001) 

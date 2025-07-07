@@ -4,6 +4,19 @@ import React, { useState, useEffect } from 'react';
 import { createC2pa } from 'c2pa';
 import 'c2pa-wc/dist/components/Indicator';
 
+const getCircularReplacer = () => {
+  const seen = new WeakSet();
+  return (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular Reference]';
+      }
+      seen.add(value);
+    }
+    return value;
+  };
+};
+
 const C2paDisplay = ({ file }) => {
   const [manifestStore, setManifestStore] = useState(null);
   const [lookedUpManifest, setLookedUpManifest] = useState(null);
@@ -93,7 +106,7 @@ const C2paDisplay = ({ file }) => {
               }
           } else {
               console.error('Decode fallback request failed.');
-            }
+          }
           } catch (decodeError) {
             console.error('Error during watermark fallback decoding:', decodeError);
           }
@@ -106,23 +119,38 @@ const C2paDisplay = ({ file }) => {
     }
   }, [file, c2paInstance]);
 
-  const findAssertion = (label, manifest) => {
-    const assertionsRoot = manifest?.activeManifest?.assertions;
-    if (!assertionsRoot) {
-      return null;
+  const findAssertion = (label, manifestStore) => {
+    // First, try the active manifest, which is the most common case.
+    const activeManifest = manifestStore?.activeManifest;
+    if (activeManifest && typeof activeManifest === 'object') {
+        const assertionsRoot = activeManifest.assertions;
+        if (assertionsRoot) {
+            const assertionsArray = Array.isArray(assertionsRoot) ? assertionsRoot : assertionsRoot.data;
+            if (Array.isArray(assertionsArray)) {
+                const found = assertionsArray.find(a => a.label.startsWith(label));
+                if (found) return found;
+            }
+        }
     }
 
-    // The C2PA SDK nests the assertions array in a 'data' property,
-    // while our DB-retrieved manifest has the array at the root. This handles both.
-    const assertionsArray = Array.isArray(assertionsRoot)
-      ? assertionsRoot
-      : assertionsRoot.data;
+    // If not found, search all manifests. This handles cases like OpenAI's
+    // where info is in a non-active (e.g., child) manifest.
+    if (!manifestStore?.manifests) return null;
 
-    if (!Array.isArray(assertionsArray)) {
-      return null;
+    for (const manifest of Object.values(manifestStore.manifests)) {
+      if (typeof manifest !== 'object' || manifest === null) continue;
+
+      const assertionsRoot = manifest.assertions;
+      if (!assertionsRoot) continue;
+      
+      const assertionsArray = Array.isArray(assertionsRoot) ? assertionsRoot : assertionsRoot.data;
+      if (!Array.isArray(assertionsArray)) continue;
+
+      const found = assertionsArray.find(a => a.label.startsWith(label));
+      if (found) return found;
     }
 
-    return assertionsArray.find(a => a.label === label);
+    return null;
   };
   
   const renderCreativeWork = (manifest) => {
@@ -168,9 +196,30 @@ const C2paDisplay = ({ file }) => {
   const renderClaimGenerator = (manifest) => {
     const actionsAssertion = findAssertion('c2pa.actions', manifest);
     const createdAction = actionsAssertion?.data?.actions?.find(a => a.action === 'c2pa.created');
-    const softwareAgent = createdAction?.softwareAgent || manifest?.activeManifest?.claim_generator;
+    
+    let agentName = null;
 
-    if (!softwareAgent) return null;
+    // First, try to get the software agent from the 'created' action.
+    const softwareAgent = createdAction?.softwareAgent;
+    if (softwareAgent) {
+      // V2 actions use an object, V1 used a string.
+      if (typeof softwareAgent === 'string') {
+        agentName = softwareAgent;
+      } else if (softwareAgent.name) {
+        agentName = softwareAgent.name;
+      }
+    }
+    
+    // If not found in actions, fall back to manifest-level information.
+    const activeM = manifest?.activeManifest;
+    if (!agentName && activeM) {
+      // The `claim_generator` is a string from our backend format.
+      // The `claimGeneratorInfo` is an array of objects from the c2pa-js SDK.
+      agentName = activeM.claim_generator || 
+                  (Array.isArray(activeM.claimGeneratorInfo) && activeM.claimGeneratorInfo.length > 0 && activeM.claimGeneratorInfo[0].name);
+    }
+
+    if (!agentName) return null;
 
     return (
       <div className="space-y-3">
@@ -179,11 +228,11 @@ const C2paDisplay = ({ file }) => {
           <h4 className="text-sm font-semibold text-slate-800 tracking-wide">PROCESSING SOFTWARE</h4>
         </div>
         <div className="ml-4">
-          <span className="text-sm text-slate-700 font-medium">{softwareAgent}</span>
+          <span className="text-sm text-slate-700 font-medium">{agentName}</span>
         </div>
       </div>
     );
-  }
+    }
 
   const renderSourceType = (manifest) => {
     const actionsAssertion = findAssertion('c2pa.actions', manifest);
@@ -326,15 +375,15 @@ const C2paDisplay = ({ file }) => {
                         <span className="text-xs text-slate-600 font-medium uppercase tracking-wider">Raw Manifest</span>
                       </div>
                       <pre className="p-4 bg-slate-900 text-green-400 text-xs overflow-auto max-h-48 font-mono">
-                        {JSON.stringify(activeManifestData, null, 2)}
+                        {JSON.stringify(activeManifestData, getCircularReplacer(), 2)}
                       </pre>
                   </div>
                 )}
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
+                  </div>
+                    </div>
+                  </div>
+                )}
       </div>
     );
   }
@@ -366,15 +415,15 @@ const C2paDisplay = ({ file }) => {
                         <svg className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                      </button>
-                    </div>
+                  </button>
+                </div>
                     {/* Content */}
                     <div className="p-4 space-y-3 text-sm">
                         <p className="text-slate-600">No registered Content Credentials found.</p>
                         <div className="flex flex-col pt-2">
                           <span className="text-xs text-slate-500 uppercase tracking-wider">Watermark ID</span>
                           <span className="text-slate-700 font-mono break-all text-xs">{decodedWatermark.secret}</span>
-                        </div>
+                </div>
                         <div className="flex flex-col">
                           <span className="text-xs text-slate-500 uppercase tracking-wider">Schema</span>
                           <span className="text-slate-700">{decodedWatermark.schema}</span>
@@ -384,7 +433,7 @@ const C2paDisplay = ({ file }) => {
         </div>
       )}
       </div>
-    );
+  );
   }
 
   // Render nothing if no manifest or watermark is found

@@ -9,3 +9,4 @@ lightning>=2.0
 omegaconf>=2.1
 six>=1.9
 einops>=0.4.0 
+didkit==0.2.1 

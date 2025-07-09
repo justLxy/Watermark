@@ -10,8 +10,7 @@ RUN npm ci --omit=dev
 
 # Copy source and build
 COPY frontend/ ./
-# Build with environment variable pointing at backend service name for internal requests
-ENV NEXT_PUBLIC_API_URL=http://backend:5001
+# 无需注入环境变量，API 基地址在源码中已写死
 RUN npm run build
 
 # -------- Production Stage --------
@@ -20,7 +19,6 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    NEXT_PUBLIC_API_URL=http://backend:5001 \
     PORT=3000
 
 # Copy built app from builder image

@@ -6,8 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     container_name: watermark_backend
-    env_file:
-      - .env
     volumes:
       - ./backend/uploads:/code/backend/uploads
       - ./backend/outputs:/code/backend/outputs
@@ -23,9 +21,6 @@ services:
     container_name: watermark_frontend
     depends_on:
       - backend
-    environment:
-      # Ensure Next.js gets correct API base when building images locally
-      - NEXT_PUBLIC_API_URL=http://backend:5001
     ports:
       # Host port 80 -> container 3000
       - "80:3000"

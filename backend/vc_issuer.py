@@ -2,6 +2,7 @@
 import sys
 import json
 import asyncio
+import inspect
 import didkit
 
 async def main():
@@ -36,12 +37,17 @@ async def main():
     # Derive verificationMethod from the key if not explicitly provided
     if "verificationMethod" not in options:
         try:
+            # Select the correct function name depending on DIDKit version
             if hasattr(didkit, "key_to_verification_method"):
-                verification_method = await didkit.key_to_verification_method("key", key_jwk_str)
+                func = didkit.key_to_verification_method
             elif hasattr(didkit, "keyToVerificationMethod"):
-                verification_method = await didkit.keyToVerificationMethod("key", key_jwk_str)
+                func = didkit.keyToVerificationMethod
             else:
                 raise AttributeError("key_to_verification_method / keyToVerificationMethod not found in didkit module")
+
+            # Call the function; it might be sync (returning str) or async (coroutine)
+            res = func("key", key_jwk_str)
+            verification_method = await res if inspect.isawaitable(res) else res
         except Exception as e:
             print(f"Failed to derive verification method: {e}", file=sys.stderr)
             sys.exit(1)

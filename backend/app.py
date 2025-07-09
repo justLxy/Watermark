@@ -130,10 +130,11 @@ def build_manifest(watermarkID, ingredient_path, form_data):
             key_jwk = json.loads(key_jwk_str)
 
             # 2. Construct the did:web string
-            # URL-encode the domain to handle potential port numbers (e.g., localhost:5001)
-            encoded_domain = urllib.parse.quote(DID_DOMAIN)
-            # The path corresponds to the endpoint that will serve the did.json
-            author_did = f"did:web:{encoded_domain}:watermarks:{watermarkID}"
+            # Build a spec-compliant did:web. Remove http(s):// if present and
+            # convert any remaining forward slashes to ':' per spec.
+            domain_part = DID_DOMAIN.replace("https://", "").replace("http://", "")
+            domain_part = domain_part.replace("/", ":")  # sub-paths → ':'
+            author_did = f"did:web:{domain_part}:watermarks:{watermarkID}"
             
             # 3. Store the DID and its private key in the manifest dictionary
             # These will be stripped out before saving the manifest file and stored securely in the DB

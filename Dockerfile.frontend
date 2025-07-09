@@ -1,0 +1,31 @@
+# -------- Build Stage --------
+FROM node:20-alpine AS builder
+
+# Create app directory
+WORKDIR /app
+
+# Install deps based on lockfile
+COPY frontend/package*.json ./
+RUN npm ci --omit=dev
+
+# Copy source and build
+COPY frontend/ ./
+# Build with environment variable pointing at backend service name for internal requests
+ENV NEXT_PUBLIC_API_URL=http://backend:5001
+RUN npm run build
+
+# -------- Production Stage --------
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_API_URL=http://backend:5001 \
+    PORT=3000
+
+# Copy built app from builder image
+COPY --from=builder /app ./
+
+EXPOSE 3000
+
+CMD ["npm", "start"] 

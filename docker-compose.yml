@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: watermark_backend
+    env_file:
+      - .env
+    volumes:
+      - ./backend/uploads:/code/backend/uploads
+      - ./backend/outputs:/code/backend/outputs
+    restart: unless-stopped
+    ports:
+      # Expose for local debugging; internal network uses service name
+      - "5001:5001"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: watermark_frontend
+    depends_on:
+      - backend
+    environment:
+      # Ensure Next.js gets correct API base when building images locally
+      - NEXT_PUBLIC_API_URL=http://backend:5001
+    ports:
+      # Host port 80 -> container 3000
+      - "80:3000"
+    restart: unless-stopped 

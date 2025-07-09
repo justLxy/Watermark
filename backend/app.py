@@ -6,9 +6,21 @@ import string
 import subprocess
 import io
 import sqlite3
+import didkit
+import urllib.parse # <-- Import url-encoding library
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PIL import Image
+
+# --- Configuration ---
+# In a production environment, this should be your public domain name.
+# For local testing, we use the Flask server's address.
+DID_DOMAIN = "localhost:5001"
+UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'outputs'
+DATABASE = 'provenance.db'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # Disable Pillow's decompression bomb check for large, trusted images
 Image.MAX_IMAGE_PIXELS = None
@@ -16,13 +28,6 @@ Image.MAX_IMAGE_PIXELS = None
 # Add parent directory to path to import trustmark
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from trustmark import TrustMark
-
-# --- Configuration ---
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'outputs'
-DATABASE = 'provenance.db'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
@@ -38,6 +43,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS provenance (
             watermark_id TEXT PRIMARY KEY,
             manifest_json TEXT NOT NULL,
+            author_did TEXT,
+            author_private_key TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -89,6 +96,28 @@ def build_manifest(watermarkID, ingredient_path, form_data):
 
     # 2. CreativeWork Assertion
     author_name = form_data.get('author', 'Anonymous')
+
+    # --- NEW: Use provided DID or fallback to generating a did:web ---
+    author_did_provided = form_data.get('authorDID')
+
+    if author_did_provided and author_did_provided.startswith('did:'):
+        # Use the DID provided by the user
+        author_did = author_did_provided
+        manifest['author_did'] = author_did
+        manifest['author_private_key_jwk'] = None # We don't have the private key for an external DID
+        print(f"Using provided DID: {author_did} for author: {author_name}")
+    else:
+        # Fallback to generating a new did:key for local testing
+        try:
+            key_jwk = didkit.generate_ed25519_key()
+            author_did = didkit.key_to_did("key", key_jwk)
+            manifest['author_did'] = author_did
+            manifest['author_private_key_jwk'] = key_jwk 
+            print(f"Generated new did:key: {author_did} for author: {author_name}")
+        except Exception as e:
+            print(f"Could not generate did:key: {e}")
+            author_did = None # Failed to generate DID
+
     creative_work_url = form_data.get('creativeWorkURL')
     work_title = form_data.get('title')
     work_description = form_data.get('description')
@@ -101,6 +130,9 @@ def build_manifest(watermarkID, ingredient_path, form_data):
             'author': [{'@type': 'Person', 'name': author_name}]
         }
     }
+    # Add DID to author if it was generated successfully
+    if author_did:
+        cwa['data']['author'][0]['id'] = author_did
     
     if work_title:
         cwa['data']['name'] = work_title
@@ -184,6 +216,55 @@ def manifest_add_signing(mf):
     mf['sign_cert'] = os.path.join(keys_path, 'es256_certs.pem')
     return mf
 
+# --- DID Document Serving Endpoint ---
+@app.route('/watermarks/<watermark_id>/did.json')
+def serve_did_document(watermark_id):
+    """
+    Serves the DID Document for a given watermark ID.
+    This endpoint is publicly accessible as required by the did:web method.
+    """
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT author_did, author_private_key FROM provenance WHERE watermark_id = ?", (watermark_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row['author_did'] or not row['author_private_key']:
+        return "DID Document not found or private key is not stored for this DID.", 404
+
+    did = row['author_did']
+    key_jwk_str = row['author_private_key']
+    key_jwk = json.loads(key_jwk_str)
+
+    # The verification method ID must be a full URI including the DID
+    verification_method_id = f"{did}#key-1"
+
+    # Construct the DID Document
+    did_document = {
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            {"Ed25519VerificationKey2018": "https://w3id.org/security#Ed25519VerificationKey2018"}
+        ],
+        "id": did,
+        "verificationMethod": [{
+            "id": verification_method_id,
+            "type": "Ed25519VerificationKey2018",
+            "controller": did,
+            "publicKeyJwk": {
+                "kty": key_jwk.get("kty"),
+                "crv": key_jwk.get("crv"),
+                "x": key_jwk.get("x"),
+            }
+        }],
+        "authentication": [verification_method_id],
+        "assertionMethod": [verification_method_id]
+    }
+
+    return jsonify(did_document)
+
+
 # --- API Endpoints ---
 @app.route('/encode', methods=['POST'])
 def encode_image():
@@ -233,17 +314,20 @@ def encode_image():
         # 3. Build and save manifest
         manifest = build_manifest(watermark_id, input_path, form_data)
         
-        # --- Store manifest in database ---
+        # Separate private data from public manifest data
+        author_did = manifest.pop('author_did', None)
+        author_private_key = manifest.pop('author_private_key_jwk', None)
+
+        # --- Store manifest and private data in database ---
         try:
             conn = sqlite3.connect(DATABASE)
             cursor = conn.cursor()
-            # Use REPLACE to handle cases where an ID might be regenerated, though unlikely
             cursor.execute(
-                "REPLACE INTO provenance (watermark_id, manifest_json) VALUES (?, ?)",
-                (watermark_id, json.dumps(manifest))
+                "REPLACE INTO provenance (watermark_id, manifest_json, author_did, author_private_key) VALUES (?, ?, ?, ?)",
+                (watermark_id, json.dumps(manifest), author_did, author_private_key)
             )
             conn.commit()
-            print(f"Successfully stored manifest for watermark ID: {watermark_id}")
+            print(f"Successfully stored manifest and DID for watermark ID: {watermark_id}")
         except sqlite3.Error as db_error:
             print(f"Database error: {db_error}", file=sys.stderr)
             # Decide if you want to fail the request or just log the error
@@ -299,26 +383,35 @@ def lookup_by_watermark():
     """Looks up provenance data from the database using a watermark ID."""
     data = request.get_json()
     if not data or 'watermark_id' not in data:
-        return jsonify({'error': 'watermark_id is required'}), 400
+        return "watermark_id is required", 400
 
     watermark_id = data['watermark_id']
-    
-    try:
-        conn = sqlite3.connect(DATABASE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT manifest_json FROM provenance WHERE watermark_id = ?", (watermark_id,))
-        result = cursor.fetchone()
-    except sqlite3.Error as e:
-        return jsonify({'error': f'Database lookup failed: {e}'}), 500
-    finally:
-        if conn:
-            conn.close()
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-    if result:
-        manifest_data = json.loads(result[0])
-        return jsonify(manifest_data)
+    cursor.execute("SELECT manifest_json, author_did FROM provenance WHERE watermark_id = ?", (watermark_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if row:
+        manifest = json.loads(row['manifest_json'])
+        author_did = row['author_did']
+
+        # Re-inject the author's DID into the CreativeWork assertion before sending
+        if author_did:
+            try:
+                for assertion in manifest.get('assertions', []):
+                    if assertion.get('label') == 'stds.schema-org.CreativeWork':
+                        if 'author' in assertion['data'] and len(assertion['data']['author']) > 0:
+                            assertion['data']['author'][0]['id'] = author_did
+                            break # Stop after finding and updating
+            except Exception as e:
+                print(f"Error re-injecting DID into looked-up manifest: {e}", file=sys.stderr)
+
+        return jsonify(manifest)
     else:
-        return jsonify({'error': 'No data found for this watermark ID'}), 404
+        return "Manifest not found for the given watermark ID", 404
 
 @app.route('/decode', methods=['POST'])
 def decode_image():

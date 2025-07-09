@@ -2,6 +2,7 @@ import random,os
 from PIL import Image
 import json
 import struct
+import didkit
 
 from trustmark import TrustMark
 
@@ -72,7 +73,7 @@ def manifest_add_signing(mf):
        mf['sign_cert']='keys/es256_certs.pem'
        return mf
 
-def manifest_add_creator(mf,name):
+def manifest_add_creator_did(mf, name, did):
        cwa=dict()
        cwa['label']='stds.schema-org.CreativeWork'
        cwa['data']=dict()
@@ -81,6 +82,7 @@ def manifest_add_creator(mf,name):
        author=dict()
        author['@type']='Person'
        author['name']=name
+       author['id']=did # <-- The DID is added here
        cwa['data']['author']=[author]
        mf['assertions'].append(cwa)
        return mf
@@ -102,7 +104,13 @@ def main() :
 
    # Build manifest
    mf=build_manifest(id, img_in)
-   mf=manifest_add_creator(mf,"Walter Mark")
+
+   # Generate a DID for the creator using didkit
+   key = didkit.generate_ed25519_key()
+   did = didkit.key_to_did("key", key)
+   print(f"Generated DID for creator: {did}")
+   
+   mf=manifest_add_creator_did(mf,"Walter Mark", did)
    mf=manifest_add_signing(mf)
 
    

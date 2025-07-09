@@ -71,6 +71,7 @@ export default function HomePage() {
   // Form State for the C2PA manifest metadata
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [authorDid, setAuthorDid] = useState(''); // <-- Add state for the author's DID
   const [description, setDescription] = useState('');
   const [creativeWorkURL, setCreativeWorkURL] = useState('');
   const [trainingPolicy, setTrainingPolicy] = useState('notAllowed');
@@ -118,6 +119,7 @@ export default function HomePage() {
     formData.append('image', encodeFile);
     formData.append('title', title);
     formData.append('author', author);
+    formData.append('authorDID', authorDid); // <-- Append the DID to the form data
     formData.append('creativeWorkURL', creativeWorkURL);
     formData.append('description', description);
     formData.append('trainingPolicy', trainingPolicy);
@@ -178,6 +180,10 @@ export default function HomePage() {
               <div>
                 <label htmlFor="author" className="block text-sm font-medium text-gray-700">Author Name</label>
                 <input id="author" type="text" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="e.g., John Doe" className={inputStyle} />
+              </div>
+              <div>
+                <label htmlFor="authorDid" className="block text-sm font-medium text-gray-700">Author DID (Optional)</label>
+                <input id="authorDid" type="text" value={authorDid} onChange={(e) => setAuthorDid(e.target.value)} placeholder="e.g., did:art:12345 or did:web:example.com" className={inputStyle} />
               </div>
               <div>
                 <label htmlFor="softwareAgent" className="block text-sm font-medium text-gray-700">Processing Software</label>

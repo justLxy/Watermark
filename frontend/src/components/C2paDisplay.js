@@ -173,7 +173,22 @@ const C2paDisplay = ({ file }) => {
           {author && (
             <div className="flex flex-col">
               <span className="text-xs text-slate-500 uppercase tracking-wider">Author</span>
-              <span className="text-sm text-slate-700 font-medium">{author.map(a => a.name).join(', ')}</span>
+              {author.map((a, index) => (
+                <div key={index} className="flex flex-col">
+                  <span className="text-sm text-slate-700 font-medium">{a.name}</span>
+                  {a.id && (
+                    <a 
+                      href={`https://dev.uniresolver.io/1.0/identifiers/${a.id}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-700 font-mono break-all"
+                      title="View DID in Universal Resolver"
+                    >
+                      {a.id}
+                    </a>
+                  )}
+                </div>
+              ))}
             </div>
           )}
           {description && (

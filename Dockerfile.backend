@@ -1,18 +1,21 @@
 FROM python:3.11-slim
 
-# Install system deps (if any heavy libs later, add here)
+# Install system deps (add wget here)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
+        wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /code
 
-# Install Python dependencies first (better caching)
+# ---------- Python deps ----------
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir gunicorn \
-    && wget -q https://github.com/contentauth/c2patool/releases/download/v0.12.0/c2patool-linux-x64 -O /usr/local/bin/c2patool \
+    # install c2patool binary
+    && wget -q https://github.com/contentauth/c2patool/releases/download/v0.12.0/c2patool-linux-x64 \
+       -O /usr/local/bin/c2patool \
     && chmod +x /usr/local/bin/c2patool
 
 # Copy only the necessary source code for the backend

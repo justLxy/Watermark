@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 
 const CameraScanner = ({ onCapture }) => {
   const videoRef = useRef(null);
@@ -103,7 +103,7 @@ const CameraScanner = ({ onCapture }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, []);
+  }, [startAutoScan]);
 
   const captureFrame = () => {
     const video = videoRef.current;
@@ -157,7 +157,7 @@ const CameraScanner = ({ onCapture }) => {
     }
   };
 
-  const startAutoScan = () => {
+  const startAutoScan = useCallback(() => {
     if (intervalRef.current) return; // Already scanning
     
     setScanning(true);
@@ -185,7 +185,7 @@ const CameraScanner = ({ onCapture }) => {
         setScanStatus('Scan error, retrying...');
       }
     }, 1000); // Check every 1 second
-  };
+  }, [onCapture]);
 
   const stopAutoScan = () => {
     if (intervalRef.current) {

@@ -284,8 +284,8 @@ export default function HomePage() {
               <div className="pt-4 mt-4 border-t space-y-4">
                 <p className="text-sm font-medium text-gray-700">Issue Authorization (License)</p>
                 <div>
-                  <label htmlFor="buyerDid" className="block text-sm font-medium text-gray-700">Buyer's DID</label>
-                  <input id="buyerDid" type="text" value={buyerDid} onChange={(e) => setBuyerDid(e.target.value)} placeholder="Enter the recipient's DID (e.g., did:key:...)" className={inputStyle} />
+                  <label htmlFor="buyerDid" className="block text-sm font-medium text-gray-700">Buyer&apos;s DID</label>
+                  <input id="buyerDid" type="text" value={buyerDid} onChange={(e) => setBuyerDid(e.target.value)} placeholder="Enter the buyer&apos;s DID (e.g., did:key:z...)" className={inputStyle} />
                 </div>
                 <div className="pt-2">
                   <button

@@ -73,7 +73,7 @@ export default function HomePage() {
   const [buyerDid, setBuyerDid] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [authError, setAuthError] = useState('');
-
+  
   // Form State for the C2PA manifest metadata
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -205,7 +205,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center font-sans py-12 px-4">
       <header className="text-center mb-10">
-        <h1 className="text-4xl font-bold text-gray-800">HKUST Project Demo</h1>
+        <h1 className="text-4xl font-bold text-gray-800">TrustMark + C2PA</h1>
       </header>
       
       <main className="w-full max-w-7xl grid grid-cols-1 md:grid-cols-2 gap-8">

@@ -10,7 +10,6 @@ RUN npm ci
 
 # Copy source and build
 COPY frontend/ ./
-# 无需注入环境变量，API 基地址在源码中已写死
 RUN npm run build
 
 # -------- Production Stage --------

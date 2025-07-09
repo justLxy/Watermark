@@ -21,7 +21,7 @@ nest_asyncio.apply()
 # --- Configuration ---
 # In a production environment, this should be your public domain name.
 # For local testing, we use the Flask server's address.
-DID_DOMAIN = "localhost:5001"
+DID_DOMAIN = os.environ.get('BACKEND_DOMAIN', 'localhost:5001')
 UPLOAD_FOLDER = 'uploads'
 OUTPUT_FOLDER = 'outputs'
 DATABASE = 'provenance.db'
@@ -405,7 +405,12 @@ def authorize_image():
             print(error_msg, file=sys.stderr)
             return error_msg, 500
         
-        return send_file(output_path, mimetype='image/png')
+        # --- Return the file without leaving it on disk ---
+        with open(output_path, 'rb') as f:
+            file_data_in_memory = io.BytesIO(f.read())
+        cleanup_paths.append(output_path)  # ensure the file is deleted after response
+        
+        return send_file(file_data_in_memory, mimetype='image/png')
 
     except Exception as e:
         print(f"Authorization failed: {e}", file=sys.stderr)

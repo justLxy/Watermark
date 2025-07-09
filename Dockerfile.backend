@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
+    PATH="/root/.cargo/bin:$PATH" \
     PYTHONPATH=/code \
     FLASK_APP=app.py
 

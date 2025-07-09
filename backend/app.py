@@ -523,9 +523,21 @@ def encode_image():
         signed_output_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_signed.png")
         cleanup_paths.append(signed_output_path)
 
-        c2pa_tool_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'c2pa', 'c2patool'))
-        if not os.path.exists(c2pa_tool_path):
-            c2pa_tool_path = 'c2patool'
+        import shutil
+        # Try to locate c2patool in various typical locations
+        potential = shutil.which("c2patool")
+        if potential:
+            c2pa_tool_path = potential
+        else:
+            # packaged repo copy
+            repo_copy = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'c2pa', 'c2patool'))
+            if os.path.exists(repo_copy):
+                c2pa_tool_path = repo_copy
+            else:
+                # default cargo install location inside container
+                cargo_copy = "/root/.cargo/bin/c2patool"
+                c2pa_tool_path = cargo_copy
+        print(f"Using c2patool path: {c2pa_tool_path}")
 
         cmd = [c2pa_tool_path, source_for_signing, "-m", manifest_path, "-f", "-o", signed_output_path]
         result = subprocess.run(cmd, capture_output=True, text=True)

@@ -41,6 +41,7 @@ app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200 MB upload limit
 CORS(app)
 
 # --- Database Initialization ---
+
 def init_db():
     """Initializes the database and creates the table if it doesn't exist."""
     conn = sqlite3.connect(DATABASE)
@@ -56,6 +57,9 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+
+# Call immediately so the table exists even when the app is started via Gunicorn
+init_db()
 
 # --- TrustMark Initialization ---
 # Available modes: Q=balance, P=high visual quality, C=compact decoder, B=base from paper
@@ -116,7 +120,13 @@ def build_manifest(watermarkID, ingredient_path, form_data):
         # Fallback to generating a new did:web for this asset
         try:
             # 1. Generate a new key for this DID
-            key_jwk_str = didkit.generate_ed25519_key()
+            # Different versions of didkit expose the function with either snake_case or camelCase.
+            if hasattr(didkit, "generate_ed25519_key"):
+                key_jwk_str = didkit.generate_ed25519_key()
+            elif hasattr(didkit, "generateEd25519Key"):
+                key_jwk_str = didkit.generateEd25519Key()
+            else:
+                raise AttributeError("generate_ed25519_key / generateEd25519Key not found in didkit module")
             key_jwk = json.loads(key_jwk_str)
 
             # 2. Construct the did:web string

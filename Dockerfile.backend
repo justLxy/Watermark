@@ -19,6 +19,15 @@ COPY . /code
 # Install local TrustMark library (editable)
 RUN pip install --no-cache-dir -e python
 
+# Install Rust toolchain & build c2patool CLI (for C2PA signing)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        pkg-config \
+        libssl-dev \
+    && curl https://sh.rustup.rs -sSf | sh -s -- -y \
+    && /root/.cargo/bin/cargo install c2patool \
+    && rm -rf /var/lib/apt/lists/*
+
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/code \

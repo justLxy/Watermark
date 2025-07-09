@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { API_BASE } from '../utils/api';
 
 // Dynamically import the C2paDisplay component to avoid SSR issues
 const C2paDisplay = dynamic(() => import('../components/C2paDisplay'), { 
@@ -68,6 +69,11 @@ export default function HomePage() {
   const [isEncoding, setIsEncoding] = useState(false);
   const [encodeError, setEncodeError] = useState('');
   
+  // State for the new Authorization workflow
+  const [buyerDid, setBuyerDid] = useState('');
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [authError, setAuthError] = useState('');
+
   // Form State for the C2PA manifest metadata
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -127,7 +133,7 @@ export default function HomePage() {
     formData.append('softwareAgent', softwareAgent);
 
     try {
-      const response = await fetch('http://localhost:5001/encode', {
+      const response = await fetch(`${API_BASE}/encode`, {
         method: 'POST',
         body: formData,
       });
@@ -149,6 +155,48 @@ export default function HomePage() {
       setEncodeError(err.message || 'An unexpected error occurred during encoding.');
     } finally {
       setIsEncoding(false);
+    }
+  };
+
+  const handleAuthorize = async () => {
+    if (!encodedFile) {
+      setAuthError('An encoded file must be present to authorize.');
+      return;
+    }
+    if (!buyerDid || !buyerDid.startsWith('did:')) {
+      setAuthError('Please enter a valid DID for the buyer.');
+      return;
+    }
+    setIsAuthorizing(true);
+    setAuthError('');
+
+    const formData = new FormData();
+    formData.append('image', encodedFile);
+    formData.append('buyerDID', buyerDid);
+
+    try {
+      const response = await fetch(`${API_BASE}/authorize`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const err_text = await response.text();
+        throw new Error(`Authorization error: ${response.status} - ${err_text}`);
+      }
+      
+      const imageBlob = await response.blob();
+      const newFile = new File([imageBlob], `authorized_${encodedFile.name}`, { type: imageBlob.type });
+
+      // Update the display with the newly authorized file
+      setEncodedFileUrl(URL.createObjectURL(imageBlob));
+      setEncodedFile(newFile);
+      setBuyerDid(''); // Clear input after success
+
+    } catch (err) {
+      setAuthError(err.message || 'An unexpected error occurred during authorization.');
+    } finally {
+      setIsAuthorizing(false);
     }
   };
 
@@ -226,10 +274,35 @@ export default function HomePage() {
           )}
           
           {encodedFileUrl && (
+            <>
               <div className="p-4 mt-4 text-center bg-green-50 rounded-lg">
                   <h3 className="text-lg font-semibold text-green-800">Encoding Successful!</h3>
-                  <p className="text-sm text-gray-600 mt-1">The new image with credentials is shown above. You can save it, or use the Decode card to inspect it.</p>
+                  <p className="text-sm text-gray-600 mt-1">The new image with credentials is shown above. You can now issue an authorization for it.</p>
               </div>
+              
+              {/* --- AUTHORIZATION FORM --- */}
+              <div className="pt-4 mt-4 border-t space-y-4">
+                <p className="text-sm font-medium text-gray-700">Issue Authorization (License)</p>
+                <div>
+                  <label htmlFor="buyerDid" className="block text-sm font-medium text-gray-700">Buyer's DID</label>
+                  <input id="buyerDid" type="text" value={buyerDid} onChange={(e) => setBuyerDid(e.target.value)} placeholder="Enter the recipient's DID (e.g., did:key:...)" className={inputStyle} />
+                </div>
+                <div className="pt-2">
+                  <button
+                    onClick={handleAuthorize}
+                    disabled={isAuthorizing}
+                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isAuthorizing ? 'Authorizing...' : 'Authorize and Re-sign Image'}
+                  </button>
+                </div>
+                 {authError && (
+                  <div className="p-2 mt-2 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
+                    <span className="font-medium">Error:</span> {authError}
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {encodeError && (

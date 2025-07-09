@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createC2pa } from 'c2pa';
 import 'c2pa-wc/dist/components/Indicator';
+import { API_BASE } from '../utils/api';
 
 const getCircularReplacer = () => {
   const seen = new WeakSet();
@@ -76,7 +77,7 @@ const C2paDisplay = ({ file }) => {
             const fileName = file.name || 'captured.png';
             formData.append('image', fileBlob, fileName);
 
-            const decodeResponse = await fetch('http://localhost:5001/decode', {
+            const decodeResponse = await fetch(`${API_BASE}/decode`, {
               method: 'POST',
               body: formData,
             });
@@ -87,7 +88,7 @@ const C2paDisplay = ({ file }) => {
                 const watermarkId = decodeData.watermark.secret;
                 
                 // 3. Got watermark ID, now look it up in our database
-                const lookupResponse = await fetch('http://localhost:5001/lookup-by-watermark', {
+                const lookupResponse = await fetch(`${API_BASE}/lookup-by-watermark`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ watermark_id: watermarkId }),
@@ -95,9 +96,20 @@ const C2paDisplay = ({ file }) => {
 
                 if (lookupResponse.ok) {
                   const lookedUpData = await lookupResponse.json();
-                  // The backend returns the raw manifest, we need to wrap it slightly
-                  // for our component rendering functions to work consistently.
-                  setLookedUpManifest({ activeManifest: lookedUpData });
+                  
+                  // Reconstruct a manifestStore-like object from the backend data
+                  const reconstructedManifest = lookedUpData.manifest;
+                  if (lookedUpData.verifiable_credential) {
+                    // Re-inject the VC as an assertion, just like it would be in a real file
+                    if (!reconstructedManifest.assertions) {
+                        reconstructedManifest.assertions = [];
+                    }
+                    reconstructedManifest.assertions.push({
+                      label: 'com.trustmark.authorization',
+                      data: lookedUpData.verifiable_credential,
+                    });
+                  }
+                  setLookedUpManifest({ activeManifest: reconstructedManifest, source: 'database' });
                 } else {
                   // DB lookup failed, so just show the watermark ID as the final fallback.
                   console.warn(`DB lookup failed for ${watermarkId}. Showing watermark only.`);
@@ -151,6 +163,57 @@ const C2paDisplay = ({ file }) => {
     }
 
     return null;
+  };
+
+  const renderAuthorization = (manifest) => {
+    const authAssertion = findAssertion('com.trustmark.authorization', manifest);
+    if (!authAssertion) return null;
+
+    const vc = authAssertion.data;
+    const subject = vc.credentialSubject;
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
+          <h4 className="text-sm font-semibold text-slate-800 tracking-wide">AUTHORIZATION LICENSE</h4>
+        </div>
+        <div className="space-y-2 ml-4">
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">Issued to (Buyer)</span>
+            <a 
+              href={`https://dev.uniresolver.io/1.0/identifiers/${subject.id}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm text-blue-600 hover:text-blue-700 font-mono break-all"
+              title="View Buyer's DID in Universal Resolver"
+            >
+              {subject.id}
+            </a>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">Issued by (Author)</span>
+             <a 
+              href={`https://dev.uniresolver.io/1.0/identifiers/${vc.issuer}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm text-slate-700 font-mono break-all"
+              title="View Author's DID in Universal Resolver"
+            >
+              {vc.issuer}
+            </a>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">License Terms</span>
+            <span className="text-sm text-slate-700">{subject.license}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">Issued on</span>
+            <span className="text-sm text-slate-700">{new Date(vc.issuanceDate).toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    );
   };
   
   const renderCreativeWork = (manifest) => {
@@ -279,26 +342,17 @@ const C2paDisplay = ({ file }) => {
   };
 
   const renderContent = (manifest) => {
-    if (!manifest?.activeManifest) {
-      return (
-        <div className="text-center py-8">
-          <div className="w-12 h-12 mx-auto mb-3 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center">
-            <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <p className="text-slate-500 text-sm">No content credentials found</p>
-        </div>
-      );
-    }
+    if (!manifest) return null;
+
     return (
       <div className="space-y-6">
         {renderCreativeWork(manifest)}
+        {renderAuthorization(manifest)}
         {renderClaimGenerator(manifest)}
         {renderSourceType(manifest)}
       </div>
     );
-  }
+  };
 
   const formatSignatureInfo = (manifest) => {
     // The signature_info from the DB has a different key name than the one from the SDK

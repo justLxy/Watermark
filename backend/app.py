@@ -8,9 +8,15 @@ import io
 import sqlite3
 import didkit
 import urllib.parse # <-- Import url-encoding library
+from datetime import datetime
+# Remove asyncio as it's no longer directly used here
+# import asyncio
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PIL import Image
+import nest_asyncio
+
+nest_asyncio.apply()
 
 # --- Configuration ---
 # In a production environment, this should be your public domain name.
@@ -265,6 +271,151 @@ def serve_did_document(watermark_id):
     return jsonify(did_document)
 
 
+# --- Authorization (VC Issuance) Endpoint ---
+@app.route('/authorize', methods=['POST'])
+def authorize_image():
+    """
+    Issues a Verifiable Credential (VC) from the author to a buyer
+    and embeds it into a new C2PA manifest in the image.
+    """
+    if 'image' not in request.files or 'buyerDID' not in request.form:
+        return "Request requires 'image' and 'buyerDID'", 400
+
+    image_file = request.files['image']
+    buyer_did = request.form['buyerDID']
+    cleanup_paths = []
+
+    try:
+        # 1. Decode watermark
+        with Image.open(image_file.stream) as img:
+            rgb_image = img.convert('RGB')
+            watermark_id, wm_present, _ = tm.decode(rgb_image, 'binary')
+            if not wm_present:
+                return "No watermark found in the provided image.", 400
+
+        # 2. Fetch author's data
+        conn = sqlite3.connect(DATABASE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT author_did, author_private_key, manifest_json FROM provenance WHERE watermark_id = ?", (watermark_id,))
+        author_row = cursor.fetchone()
+        conn.close()
+        
+        if not author_row or not author_row['author_private_key']:
+            return "Author's private key not found, cannot issue authorization.", 404
+
+        author_did = author_row['author_did']
+        author_key_jwk = author_row['author_private_key']
+        original_manifest = json.loads(author_row['manifest_json'])
+        # Work on a copy so we don't mutate the stored original manifest
+        new_manifest = json.loads(author_row['manifest_json'])
+
+        # 3. Create VC claims
+        vc_claims = {
+            "@context": [
+                "https://www.w3.org/2018/credentials/v1",
+                {"artworkId": "https://example.org/terms#artworkId"}
+            ],
+            "type": ["VerifiableCredential", "ArtworkLicense"],
+            "issuer": author_did,
+            "issuanceDate": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            "credentialSubject": {
+                "id": buyer_did,
+                "artworkId": f"urn:watermark:{watermark_id}"
+            }
+        }
+
+        # 4. Sign the VC by calling the external helper script
+        
+        # Options can be an empty dict; the helper script will add proofPurpose and verificationMethod.
+        options = {}
+
+        # Serialize all data to JSON strings to pass as command line arguments
+        vc_claims_str = json.dumps(vc_claims)
+        options_str = json.dumps(options)
+        
+        try:
+            # Execute the helper script in a separate process
+            # sys.executable ensures we use the same python interpreter
+            result = subprocess.run(
+                [sys.executable, 'vc_issuer.py', vc_claims_str, options_str, author_key_jwk],
+                capture_output=True,
+                text=True,
+                check=True  # This will raise CalledProcessError if the script returns a non-zero exit code
+            )
+            signed_vc_str = result.stdout.strip()
+            
+        except subprocess.CalledProcessError as e:
+            # The script failed, log its stderr for debugging
+            print(f"vc_issuer.py failed:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}", file=sys.stderr)
+            return f"Error issuing credential: {e.stderr}", 500
+
+        signed_vc = json.loads(signed_vc_str)
+
+        # 5. Create new VC assertion
+        vc_assertion = {"label": "com.trustmark.authorization", "data": signed_vc}
+        new_manifest['assertions'].append(vc_assertion)
+
+        # --- Persist updated manifest + VC in database ---
+        try:
+            conn = sqlite3.connect(DATABASE)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE provenance
+                   SET manifest_json = ?,
+                       verifiable_credential = ?,
+                       vc_issued_at = ?
+                 WHERE watermark_id = ?
+                """,
+                (json.dumps(new_manifest), signed_vc_str, datetime.utcnow().isoformat(), watermark_id)
+            )
+            conn.commit()
+            print(f"Updated provenance record for watermark {watermark_id} with VC")
+        except sqlite3.Error as db_error:
+            print(f"Database update error (VC persist): {db_error}", file=sys.stderr)
+        finally:
+            if conn:
+                conn.close()
+
+        # 6. Re-sign the image (synchronously)
+        base_filename = "".join(random.choices(string.ascii_lowercase + string.digits, k=16))
+        
+        parent_image_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_parent.png")
+        image_file.seek(0)
+        image_file.save(parent_image_path)
+        cleanup_paths.append(parent_image_path)
+
+        new_manifest['ingredient_paths'] = [os.path.abspath(parent_image_path)]
+        
+        manifest_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}.json")
+        with open(manifest_path, 'w') as f:
+            json.dump(manifest_add_signing(new_manifest), f)
+        cleanup_paths.append(manifest_path)
+
+        output_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_authorized.png")
+        
+        command = ['c2patool', parent_image_path, '-m', manifest_path, '-f', '-o', output_path]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            error_msg = (
+                f"c2patool failed with exit code {result.returncode}\n"
+                f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            )
+            print(error_msg, file=sys.stderr)
+            return error_msg, 500
+        
+        return send_file(output_path, mimetype='image/png')
+
+    except Exception as e:
+        print(f"Authorization failed: {e}", file=sys.stderr)
+        return str(e), 500
+    finally:
+        for path in cleanup_paths:
+            if os.path.exists(path):
+                os.remove(path)
+
+
 # --- API Endpoints ---
 @app.route('/encode', methods=['POST'])
 def encode_image():
@@ -390,7 +541,7 @@ def lookup_by_watermark():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT manifest_json, author_did FROM provenance WHERE watermark_id = ?", (watermark_id,))
+    cursor.execute("SELECT manifest_json, author_did, verifiable_credential, vc_issued_at FROM provenance WHERE watermark_id = ?", (watermark_id,))
     row = cursor.fetchone()
     conn.close()
 
@@ -409,7 +560,13 @@ def lookup_by_watermark():
             except Exception as e:
                 print(f"Error re-injecting DID into looked-up manifest: {e}", file=sys.stderr)
 
-        return jsonify(manifest)
+        response_payload = {
+            "manifest": manifest,
+            "verifiable_credential": json.loads(row['verifiable_credential']) if row['verifiable_credential'] else None,
+            "vc_issued_at": row['vc_issued_at']
+        }
+
+        return jsonify(response_payload)
     else:
         return "Manifest not found for the given watermark ID", 404
 

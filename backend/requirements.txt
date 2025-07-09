@@ -1,6 +1,7 @@
 Flask
 Flask-Cors
 Pillow
+nest_asyncio
 c2pa-python
 numpy>=1.20.0,<2.0.0
 pathlib>=1.0.1

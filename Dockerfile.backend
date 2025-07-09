@@ -13,11 +13,12 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir gunicorn
 
-# Copy project code
-COPY . /code
+# Copy only the necessary source code for the backend
+COPY backend/ /code/backend
+COPY python/ /code/python
 
-# Install local TrustMark library (editable)
-RUN pip install --no-cache-dir -e python
+# Install local TrustMark library
+RUN pip install --no-cache-dir /code/python
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \

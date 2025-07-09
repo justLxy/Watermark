@@ -113,15 +113,25 @@ def build_manifest(watermarkID, ingredient_path, form_data):
         manifest['author_private_key_jwk'] = None # We don't have the private key for an external DID
         print(f"Using provided DID: {author_did} for author: {author_name}")
     else:
-        # Fallback to generating a new did:key for local testing
+        # Fallback to generating a new did:web for this asset
         try:
-            key_jwk = didkit.generate_ed25519_key()
-            author_did = didkit.key_to_did("key", key_jwk)
+            # 1. Generate a new key for this DID
+            key_jwk_str = didkit.generate_ed25519_key()
+            key_jwk = json.loads(key_jwk_str)
+
+            # 2. Construct the did:web string
+            # URL-encode the domain to handle potential port numbers (e.g., localhost:5001)
+            encoded_domain = urllib.parse.quote(DID_DOMAIN)
+            # The path corresponds to the endpoint that will serve the did.json
+            author_did = f"did:web:{encoded_domain}:watermarks:{watermarkID}"
+            
+            # 3. Store the DID and its private key in the manifest dictionary
+            # These will be stripped out before saving the manifest file and stored securely in the DB
             manifest['author_did'] = author_did
-            manifest['author_private_key_jwk'] = key_jwk 
-            print(f"Generated new did:key: {author_did} for author: {author_name}")
+            manifest['author_private_key_jwk'] = key_jwk_str # Store the string version of the JWK
+            print(f"Generated new did:web: {author_did} for author: {author_name}")
         except Exception as e:
-            print(f"Could not generate did:key: {e}")
+            print(f"Could not generate did:web: {e}", file=sys.stderr)
             author_did = None # Failed to generate DID
 
     creative_work_url = form_data.get('creativeWorkURL')

@@ -8,7 +8,7 @@ import didkit
 async def main():
     """
     Takes VC claims, options, and a private key as command line arguments,
-    signs the credential using didkit, and prints the result to stdout.
+    signs the credential using didkit 0.3.3, and prints the result to stdout.
     """
     if len(sys.argv) != 4:
         print("Usage: python vc_issuer.py <vc_claims_json> <options_json> <key_jwk_json>", file=sys.stderr)
@@ -31,51 +31,37 @@ async def main():
         sys.exit(1)
 
     # Ensure proofPurpose is present
-    if "proofPurpose" not in options:
-        options["proofPurpose"] = "assertionMethod"
+    options.setdefault("proofPurpose", "assertionMethod")
 
     # Derive verificationMethod from the key if not explicitly provided
     if "verificationMethod" not in options:
         try:
-            # Select the correct function name depending on DIDKit version
-            if hasattr(didkit, "key_to_verification_method"):
-                func = didkit.key_to_verification_method
-            elif hasattr(didkit, "keyToVerificationMethod"):
-                func = didkit.keyToVerificationMethod
-            else:
-                raise AttributeError("key_to_verification_method / keyToVerificationMethod not found in didkit module")
-
-            # Call the function; it might be sync (returning str) or async (coroutine)
-            res = func("key", key_jwk_str)
-            verification_method = await res if inspect.isawaitable(res) else res
+            verification_method = await didkit.key_to_verification_method("key", key_jwk_str)
         except Exception as e:
             print(f"Failed to derive verification method: {e}", file=sys.stderr)
             sys.exit(1)
         options["verificationMethod"] = verification_method
 
-    try:
-        # issue_credential may be named issueCredential and may be sync or async.
-        if hasattr(didkit, "issue_credential"):
-            issue_func = didkit.issue_credential
-        elif hasattr(didkit, "issueCredential"):
-            issue_func = didkit.issueCredential
-        else:
-            raise AttributeError("issue_credential / issueCredential not found in didkit module")
+    # didkit 0.3.3 has difficulty resolving did:web with encoded port during local dev.
+    # If issuer DID contains an encoded port, fall back to did:key.
+    issuer_did = vc_claims.get("issuer")
+    if issuer_did and issuer_did.startswith("did:web:") and "%3A" in issuer_did:
+        try:
+            vc_claims["issuer"] = didkit.key_to_did("key", key_jwk_str)
+        except Exception as e:
+            print(f"Failed to derive did:key: {e}", file=sys.stderr)
+            sys.exit(1)
 
-        res = issue_func(
+    try:
+        signed_vc = await didkit.issue_credential(
             json.dumps(vc_claims),
             json.dumps(options),
             key_jwk_str
         )
-        signed_vc = await res if inspect.isawaitable(res) else res
-        # Print the successful result to stdout
         print(signed_vc)
-
     except Exception as e:
-        # Print any errors to stderr and exit
         print(f"Error in didkit.issue_credential: {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
-    # asyncio.run() creates a new event loop and runs the coroutine.
     asyncio.run(main()) 

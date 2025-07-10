@@ -10,4 +10,4 @@ torch>=1.10.0
 torchvision>=0.11.0
 opencv-python>=4.5.4.60
 einops>=0.4.0
-didkit==0.2.1 
+didkit==0.3.3

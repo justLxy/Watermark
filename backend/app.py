@@ -139,12 +139,16 @@ def build_manifest(watermarkID, ingredient_path, form_data):
             key_jwk = json.loads(key_jwk_str)
 
             # 2. Construct the did:web string
-            # Build a spec-compliant did:web. Remove http(s):// if present and
-            # convert any remaining forward slashes to ':' per spec.
-            domain_part = DID_DOMAIN.replace("https://", "").replace("http://", "")
-            domain_part = domain_part.replace("/", ":")  # sub-paths → ':'
-            author_did = f"did:web:{domain_part}:watermarks:{watermarkID}"
+            # Per did:web spec, the domain part needs to be percent-encoded
+            # if it contains characters like ':'. First, strip any scheme.
+            domain_without_scheme = DID_DOMAIN.replace("https://", "").replace("http://", "")
+
+            # Then, percent-encode the domain, which handles ports correctly.
+            encoded_domain = urllib.parse.quote(domain_without_scheme)
             
+            # Any sub-pathing for the DID document is part of the DID path, not domain
+            author_did = f"did:web:{encoded_domain}:watermarks:{watermarkID}"
+
             # 3. Store the DID and its private key in the manifest dictionary
             # These will be stripped out before saving the manifest file and stored securely in the DB
             manifest['author_did'] = author_did

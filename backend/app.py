@@ -139,11 +139,24 @@ def build_manifest(watermarkID, ingredient_path, form_data):
             key_jwk = json.loads(key_jwk_str)
 
             # 2. Construct the did:web string
-            # Build a spec-compliant did:web. Remove http(s):// if present and
-            # convert any remaining forward slashes to ':' per spec.
-            domain_part = DID_DOMAIN.replace("https://", "").replace("http://", "")
-            domain_part = domain_part.replace("/", ":")  # sub-paths → ':'
-            author_did = f"did:web:{domain_part}:watermarks:{watermarkID}"
+            need_did_key = (
+                form_data.get('didType') == 'key' or
+                'localhost' in DID_DOMAIN or DID_DOMAIN.startswith('127.')
+            )
+
+            if need_did_key:
+                # Generate did:key from the same JWK
+                if hasattr(didkit, 'key_to_did'):
+                    author_did = didkit.key_to_did('key', key_jwk_str)
+                elif hasattr(didkit, 'keyToDid'):
+                    author_did = didkit.keyToDid('key', key_jwk_str)
+                else:
+                    raise AttributeError('key_to_did / keyToDid not found in didkit module')
+            else:
+                # Build a spec-compliant did:web. Remove http(s):// if present and convert '/' → ':'
+                domain_part = DID_DOMAIN.replace('https://', '').replace('http://', '')
+                domain_part = domain_part.replace('/', ':')
+                author_did = f'did:web:{domain_part}:watermarks:{watermarkID}'
             
             # 3. Store the DID and its private key in the manifest dictionary
             # These will be stripped out before saving the manifest file and stored securely in the DB

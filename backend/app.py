@@ -378,22 +378,12 @@ def authorize_image():
         options_str = json.dumps(options)
         
         try:
-            # Execute the helper script in a separate process
-            # sys.executable ensures we use the same python interpreter
-            result = subprocess.run(
-                [sys.executable, 'vc_issuer.py', vc_claims_str, options_str, author_key_jwk],
-                capture_output=True,
-                text=True,
-                check=True  # This will raise CalledProcessError if the script returns a non-zero exit code
-            )
-            signed_vc_str = result.stdout.strip()
-            
-        except subprocess.CalledProcessError as e:
-            # The script failed, log its stderr for debugging
-            print(f"vc_issuer.py failed:\nSTDOUT:\n{e.stdout}\nSTDERR:\n{e.stderr}", file=sys.stderr)
-            return f"Error issuing credential: {e.stderr}", 500
-
-        signed_vc = json.loads(signed_vc_str)
+            from vc_issuer import sign_credential
+            signed_vc_str = sign_credential(vc_claims, {}, author_key_jwk)
+            signed_vc = json.loads(signed_vc_str)
+        except Exception as e:
+            print(f"Error issuing credential: {e}", file=sys.stderr)
+            return f"Error issuing credential: {e}", 500
 
         # 5. Create new VC assertion
         vc_assertion = {"label": "com.trustmark.authorization", "data": signed_vc}

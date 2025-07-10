@@ -5,6 +5,42 @@ import asyncio
 import inspect
 import didkit
 
+async def _issue_credential_async(vc_claims: dict, options: dict, key_jwk_str: str) -> str:
+    """Core async routine used by both CLI and library call."""
+    # Ensure proofPurpose
+    if "proofPurpose" not in options:
+        options["proofPurpose"] = "assertionMethod"
+
+    # Derive verificationMethod if needed (reuse earlier logic)
+    if "verificationMethod" not in options:
+        if hasattr(didkit, "key_to_verification_method"):
+            func = didkit.key_to_verification_method
+        elif hasattr(didkit, "keyToVerificationMethod"):
+            func = didkit.keyToVerificationMethod
+        else:
+            raise AttributeError("key_to_verification_method / keyToVerificationMethod missing")
+
+        res = func("key", key_jwk_str)
+        options["verificationMethod"] = await res if inspect.isawaitable(res) else res
+
+    # issue_credential
+    if hasattr(didkit, "issue_credential"):
+        issue_func = didkit.issue_credential
+    elif hasattr(didkit, "issueCredential"):
+        issue_func = didkit.issueCredential
+    else:
+        raise AttributeError("issue_credential / issueCredential missing")
+
+    res = issue_func(json.dumps(vc_claims), json.dumps(options), key_jwk_str)
+    signed = await res if inspect.isawaitable(res) else res
+    return signed
+
+
+def sign_credential(vc_claims: dict, options: dict, key_jwk_str: str) -> str:
+    """Synchronous helper for in-process use."""
+    return asyncio.run(_issue_credential_async(vc_claims, options, key_jwk_str))
+
+
 async def main():
     """
     Takes VC claims, options, and a private key as command line arguments,

@@ -281,37 +281,35 @@ def serve_did_document(watermark_id):
     conn.close()
 
     if not row or not row['author_did'] or not row['author_private_key']:
-        return "DID Document not found or private key is not stored for this DID.", 404
+        return "DID not found", 404
 
-    did = row['author_did']
+    author_did = row['author_did']
     key_jwk_str = row['author_private_key']
     key_jwk = json.loads(key_jwk_str)
 
-    # The verification method ID must be a full URI including the DID
-    verification_method_id = f"{did}#key-1"
-
-    # Construct the DID Document
-    did_document = {
+    # Build DID Document with publicKeyJwk
+    did_doc = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
-            {"Ed25519VerificationKey2018": "https://w3id.org/security#Ed25519VerificationKey2018"}
-        ],
-        "id": did,
-        "verificationMethod": [{
-            "id": verification_method_id,
-            "type": "Ed25519VerificationKey2018",
-            "controller": did,
-            "publicKeyJwk": {
-                "kty": key_jwk.get("kty"),
-                "crv": key_jwk.get("crv"),
-                "x": key_jwk.get("x"),
+            {
+                "@id": "https://w3id.org/security#publicKeyJwk",
+                "@type": "@json"
             }
-        }],
-        "authentication": [verification_method_id],
-        "assertionMethod": [verification_method_id]
+        ],
+        "id": author_did,
+        "verificationMethod": [
+            {
+                "id": f"{author_did}#owner",
+                "type": "JsonWebKey2020",
+                "controller": author_did,
+                "publicKeyJwk": {k: v for k, v in key_jwk.items() if k != "d"}  # remove private part
+            }
+        ],
+        "authentication": [f"{author_did}#owner"],
+        "assertionMethod": [f"{author_did}#owner"]
     }
 
-    return jsonify(did_document)
+    return jsonify(did_doc)
 
 
 # --- Authorization (VC Issuance) Endpoint ---

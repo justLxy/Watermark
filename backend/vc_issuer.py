@@ -11,8 +11,9 @@ async def _issue_credential_async(vc_claims: dict, options: dict, key_jwk_str: s
     if "proofPurpose" not in options:
         options["proofPurpose"] = "assertionMethod"
 
-    # Derive verificationMethod if needed (reuse earlier logic)
-    if "verificationMethod" not in options:
+    issuer = vc_claims.get("issuer")
+    # Derive verificationMethod only for did:key issuer; for did:web let DIDKit choose default
+    if issuer and issuer.startswith("did:key") and "verificationMethod" not in options:
         if hasattr(didkit, "key_to_verification_method"):
             func = didkit.key_to_verification_method
         elif hasattr(didkit, "keyToVerificationMethod"):

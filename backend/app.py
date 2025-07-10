@@ -55,6 +55,15 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Ensure new columns exist (added after initial deployment)
+    cursor.execute("PRAGMA table_info(provenance)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    if "verifiable_credential" not in existing_cols:
+        cursor.execute("ALTER TABLE provenance ADD COLUMN verifiable_credential TEXT")
+    if "vc_issued_at" not in existing_cols:
+        cursor.execute("ALTER TABLE provenance ADD COLUMN vc_issued_at TIMESTAMP")
+
     conn.commit()
     conn.close()
 

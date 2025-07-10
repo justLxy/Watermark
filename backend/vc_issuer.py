@@ -54,12 +54,20 @@ async def main():
         options["verificationMethod"] = verification_method
 
     try:
-        # didkit.issue_credential is an async function, so we await it.
-        signed_vc = await didkit.issue_credential(
+        # issue_credential may be named issueCredential and may be sync or async.
+        if hasattr(didkit, "issue_credential"):
+            issue_func = didkit.issue_credential
+        elif hasattr(didkit, "issueCredential"):
+            issue_func = didkit.issueCredential
+        else:
+            raise AttributeError("issue_credential / issueCredential not found in didkit module")
+
+        res = issue_func(
             json.dumps(vc_claims),
             json.dumps(options),
             key_jwk_str
         )
+        signed_vc = await res if inspect.isawaitable(res) else res
         # Print the successful result to stdout
         print(signed_vc)
 

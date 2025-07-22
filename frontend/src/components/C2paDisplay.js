@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createC2pa } from 'c2pa';
 import 'c2pa-wc/dist/components/Indicator';
-import { API_BASE } from '../utils/api';
+import { API_BASE, verifyCredential } from '../utils/api';
 
 // Build resolver link accommodating did:art which Universal Resolver does not yet support
 function getResolverUrl(didOrUrl) {
@@ -37,6 +37,7 @@ const C2paDisplay = ({ file }) => {
   const [showRaw, setShowRaw] = useState(false);
   const [c2paInstance, setC2paInstance] = useState(null);
   const [showPanel, setShowPanel] = useState(false);
+  const [verifyResult, setVerifyResult] = useState(null);
 
   // Effect to initialize the C2PA library once on component mount
   useEffect(() => {
@@ -183,6 +184,15 @@ const C2paDisplay = ({ file }) => {
     const vc = authAssertion.data;
     const subject = vc.credentialSubject;
 
+    const handleVerify = async () => {
+      try {
+        const res = await verifyCredential(vc.jwt);
+        setVerifyResult(res);
+      } catch (e) {
+        setVerifyResult({ error: e.message, valid: false });
+      }
+    };
+
     return (
       <div className="space-y-3">
         <div className="flex items-center space-x-2">
@@ -222,6 +232,14 @@ const C2paDisplay = ({ file }) => {
             <span className="text-xs text-slate-500 uppercase tracking-wider">Issued on</span>
             <span className="text-sm text-slate-700">{new Date(vc.issuanceDate).toLocaleString()}</span>
           </div>
+          {vc.jwt && (
+            <div className="flex items-center space-x-2 pt-2">
+              <button onClick={handleVerify} className="px-3 py-1 text-xs bg-slate-800 text-white rounded-md hover:bg-slate-700">Verify Signature</button>
+              {verifyResult && (
+                <span className={`text-xs font-semibold ${verifyResult.valid ? 'text-green-600' : 'text-red-600'}`}>{verifyResult.valid ? 'Valid' : 'Invalid'}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

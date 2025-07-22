@@ -14,3 +14,4 @@ didkit==0.3.3
 python-jose[ecdsa]==3.3.0
 ecdsa
 cryptography
+base58

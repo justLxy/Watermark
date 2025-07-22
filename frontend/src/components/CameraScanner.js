@@ -103,7 +103,7 @@ const CameraScanner = ({ onCapture }) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [startAutoScan]);
+  }, []);
 
   const captureFrame = () => {
     const video = videoRef.current;

@@ -15,6 +15,9 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PIL import Image
 import nest_asyncio
+from typing import Tuple, Optional
+from ecdsa import SECP256k1, VerifyingKey
+from ecdsa.util import sigdecode_string
 
 nest_asyncio.apply()
 
@@ -265,8 +268,20 @@ def manifest_add_signing(mf):
     mf['sign_cert'] = os.path.join(keys_path, 'es256_certs.pem')
     return mf
 
+def _jwk_to_compressed_multibase(jwk: dict) -> str:
+    """Convert secp256k1 JWK (with x, y) to multibase (r=base64url) compressed key."""
+    x_b = base64.urlsafe_b64decode(jwk['x'] + '=' * (-len(jwk['x']) % 4))
+    y_b = base64.urlsafe_b64decode(jwk['y'] + '=' * (-len(jwk['y']) % 4))
+    y_int = int.from_bytes(y_b, 'big')
+    prefix = b'\x03' if y_int % 2 else b'\x02'
+    comp = prefix + x_b  # 33 bytes
+    mb = 'r' + base64.urlsafe_b64encode(comp).decode().rstrip('=')
+    return mb
+
+
 def _build_did_art_doc(did_str: str, key_jwk: dict) -> dict:
     """Helper to construct a DID-ART document given the DID string and key JWK."""
+    pub_mb = _jwk_to_compressed_multibase(key_jwk)
     return {
         "@context": [
             "https://www.w3.org/ns/did/v1",
@@ -278,7 +293,7 @@ def _build_did_art_doc(did_str: str, key_jwk: dict) -> dict:
                 "id": f"{did_str}#masterkey",
                 "type": "EcdsaSecp256k1VerificationKey2019",
                 "controller": did_str,
-                "publicKeyMultibase": key_jwk.get("x")
+                "publicKeyMultibase": pub_mb
             }
         ],
         "authentication": [f"{did_str}#masterkey"],
@@ -351,24 +366,23 @@ def serve_did_document(watermark_id):
     key_jwk_str = row['author_private_key']
     key_jwk = json.loads(key_jwk_str)
 
-    # DID-ART document
-    did_doc = {
-        "@context": [
-            "https://www.w3.org/ns/did/v1",
-            "https://w3c-ccg.github.io/ld-cryptosuite-registry/#ecdsasecp256k1signature2019"
-        ],
-        "id": author_did,
-        "verificationMethod": [
-            {
-                "id": f"{author_did}#masterkey",
-                "type": "EcdsaSecp256k1VerificationKey2019",
-                "controller": author_did,
-                "publicKeyMultibase": key_jwk.get("x")
-            }
-        ],
-        "authentication": [f"{author_did}#masterkey"],
-        "assertionMethod": [f"{author_did}#masterkey"]
-    }
+    if author_did.startswith("did:art:"):
+        did_doc = _build_did_art_doc(author_did, key_jwk)
+    else:
+        did_doc = {
+            "@context": "https://www.w3.org/ns/did/v1",
+            "id": author_did,
+            "verificationMethod": [
+                {
+                    "id": f"{author_did}#owner",
+                    "type": "JsonWebKey2020",
+                    "controller": author_did,
+                    "publicKeyJwk": {k: v for k, v in key_jwk.items() if k != "d"}
+                }
+            ],
+            "authentication": [f"{author_did}#owner"],
+            "assertionMethod": [f"{author_did}#owner"]
+        }
 
     return jsonify(did_doc)
 
@@ -745,6 +759,176 @@ def decode_image():
                 print(f"Cleaned up decode file: {input_path}")
             except Exception as e_clean:
                 print(f"Failed to clean up file {input_path}: {e_clean}", file=sys.stderr)
+
+# --- ES256K JWT verification helpers ---
+import hashlib, binascii
+import base64, math
+
+# --- ES256K JWT verification helpers ---
+from ecdsa import SECP256k1, VerifyingKey
+from ecdsa.util import sigdecode_string
+
+
+def _decode_multibase_key(multibase_str: str) -> bytes:
+    """Decode multibase-encoded compressed secp256k1 public key."""
+    if not multibase_str:
+        raise ValueError("Empty multibase string")
+    prefix = multibase_str[0]
+    data = multibase_str[1:]
+    if prefix == 'r':
+        # base64url (per multibase table) – add padding if needed
+        padding = '=' * (-len(data) % 4)
+        return base64.urlsafe_b64decode(data + padding)
+    elif prefix == 'z':
+        # base58btc (optional)
+        import base58
+        return base58.b58decode(data)
+    else:
+        raise ValueError(f"Unsupported multibase prefix: {prefix}")
+
+
+def _decompress_secp256k1_pubkey(comp_pubkey: bytes) -> bytes:
+    """Convert 33-byte compressed pubkey to 64-byte uncompressed X||Y for ecdsa library."""
+    if len(comp_pubkey) != 33:
+        raise ValueError("Compressed secp256k1 key must be 33 bytes")
+    prefix = comp_pubkey[0]
+    if prefix not in (2, 3):
+        raise ValueError("Invalid compression prefix")
+
+    x = int.from_bytes(comp_pubkey[1:], 'big')
+    curve = SECP256k1.curve
+    # y^2 = x^3 + 7 mod p
+    y_sq = (pow(x, 3, curve.p()) + 7) % curve.p()
+    y = pow(y_sq, (curve.p() + 1) // 4, curve.p())
+    # Select correct y that matches prefix parity
+    if (y % 2 == 0 and prefix == 3) or (y % 2 == 1 and prefix == 2):
+        y = curve.p() - y
+    return x.to_bytes(32, 'big') + y.to_bytes(32, 'big')
+
+
+def _verify_es256k_jwt(jwt_str: str, did_doc: dict) -> Tuple[bool, Optional[dict], str]:
+    """Verify ES256K-signed JWT using public key from DID Document.
+
+    Returns (is_valid, payload_dict_or_none, error_string)"""
+    try:
+        header_b64, payload_b64, sig_b64 = jwt_str.split('.')
+    except ValueError:
+        return False, None, "JWT must have 3 parts"
+
+    padding = '=' * (-len(header_b64) % 4)
+    header_json = base64.urlsafe_b64decode(header_b64 + padding).decode()
+    header = json.loads(header_json)
+
+    if header.get('alg') != 'ES256K':
+        return False, None, "Unsupported alg (expected ES256K)"
+
+    kid = header.get('kid')
+    if not kid:
+        return False, None, "Missing kid in header"
+
+    # Locate verificationMethod in DID Doc
+    vm_list = did_doc.get('verificationMethod', [])
+    vm = next((v for v in vm_list if v.get('id') == kid), None)
+    if not vm:
+        return False, None, f"kid {kid} not found in DID document"
+
+    pub_multibase = vm.get('publicKeyMultibase')
+    if not pub_multibase:
+        return False, None, "Missing publicKeyMultibase"
+
+    try:
+        comp_pub = _decode_multibase_key(pub_multibase)
+        raw_pub = _decompress_secp256k1_pubkey(comp_pub)
+    except Exception as e:
+        return False, None, f"Public key decode error: {e}"
+
+    try:
+        vk = VerifyingKey.from_string(raw_pub, curve=SECP256k1)
+    except Exception as e:
+        return False, None, f"VerifyingKey error: {e}"
+
+    # Build signing input
+    signing_input = f"{header_b64}.{payload_b64}".encode()
+    # signature raw 64 bytes
+    padding = '=' * (-len(sig_b64) % 4)
+    sig_raw = base64.urlsafe_b64decode(sig_b64 + padding)
+    if len(sig_raw) != 64:
+        return False, None, "Signature must be 64 raw bytes"
+
+    try:
+        valid = vk.verify(sig_raw, signing_input, hashfunc=hashlib.sha256, sigdecode=sigdecode_string)
+    except Exception as e:
+        return False, None, f"Verification error: {e}"
+
+    if not valid:
+        return False, None, "Invalid signature"
+
+    # Decode payload
+    padding = '=' * (-len(payload_b64) % 4)
+    payload_json = base64.urlsafe_b64decode(payload_b64 + padding).decode()
+    payload = json.loads(payload_json)
+
+    return True, payload, ""
+
+
+# --- Simple internal DID resolver helper (did:art only) ---
+def _resolve_local_did_art(did_str: str) -> Optional[dict]:
+    if not did_str.startswith('did:art:'):
+        return None
+    try:
+        conn = sqlite3.connect(DATABASE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT author_private_key FROM provenance WHERE author_did = ?", (did_str,))
+        row = cursor.fetchone()
+    finally:
+        if conn:
+            conn.close()
+    if not row:
+        return None
+    key_jwk_str = row['author_private_key']
+    key_jwk = json.loads(key_jwk_str)
+    return _build_did_art_doc(did_str, key_jwk)
+
+
+# --- Verification endpoint ---
+@app.route('/verify-credential', methods=['POST'])
+def verify_credential():
+    data = request.get_json(silent=True) or {}
+    jwt_str = data.get('jwt')
+    if not jwt_str:
+        return {"error": "Missing jwt"}, 400
+
+    # Extract kid to know which DID to resolve
+    try:
+        header_b64 = jwt_str.split('.')[0]
+        padding = '=' * (-len(header_b64) % 4)
+        header = json.loads(base64.urlsafe_b64decode(header_b64 + padding).decode())
+        did = header.get('kid').split('#')[0]
+    except Exception:
+        return {"error": "Invalid JWT header"}, 400
+
+    did_doc = None
+    if did.startswith('did:art:'):
+        did_doc = _resolve_local_did_art(did)
+    if not did_doc:
+        # Fallback: try hitting our /resolve endpoint
+        try:
+            from urllib import request as urlreq, parse as urlparse
+            resolver_url = urlparse.urljoin(request.host_url, f"resolve?did={urlparse.quote(did)}")
+            with urlreq.urlopen(resolver_url) as resp:
+                did_doc = json.loads(resp.read())
+        except Exception:
+            did_doc = None
+
+    if not did_doc:
+        return {"error": "Could not resolve DID"}, 400
+
+    valid, payload, err = _verify_es256k_jwt(jwt_str, did_doc)
+    if not valid:
+        return {"valid": False, "error": err}, 200
+
+    return {"valid": True, "payload": payload}, 200
 
 if __name__ == '__main__':
     init_db()  # Ensure DB is ready before starting the app

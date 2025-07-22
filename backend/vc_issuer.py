@@ -4,6 +4,41 @@ import json
 import asyncio
 import inspect
 import didkit
+import base64, json as _json, hashlib
+from ecdsa import SigningKey, SECP256k1
+
+# Helper to base64url without padding
+def _b64url(data: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+def _sign_es256k_jwt(vc_claims: dict, key_jwk_str: str) -> str:
+    """Manually sign JWT with ES256K since python-jose lacks support."""
+    jwk_dict = _json.loads(key_jwk_str)
+    d_b64 = jwk_dict.get("d")
+    if not d_b64:
+        raise ValueError("Private key 'd' missing in JWK")
+    priv_bytes = base64.urlsafe_b64decode(d_b64 + '==')
+    sk = SigningKey.from_string(priv_bytes, curve=SECP256k1, hashfunc=hashlib.sha256)
+
+    header = {
+        "alg": "ES256K",
+        "kid": f"{vc_claims['issuer']}#masterkey",
+        "typ": "JWT"
+    }
+    header_b64 = _b64url(_json.dumps(header, separators=(',', ':')).encode())
+    payload_b64 = _b64url(_json.dumps(vc_claims, separators=(',', ':')).encode())
+    signing_input = f"{header_b64}.{payload_b64}".encode()
+
+    from ecdsa.util import sigencode_string
+    signature = sk.sign_deterministic(signing_input, hashfunc=hashlib.sha256, sigencode=sigencode_string)
+    sig_b64 = _b64url(signature)
+
+    token = f"{header_b64}.{payload_b64}.{sig_b64}"
+
+    enriched = vc_claims.copy()
+    enriched["jwt"] = token
+    return _json.dumps(enriched)
 
 async def _issue_credential_async(vc_claims: dict, options: dict, key_jwk_str: str) -> str:
     """Core async routine used by both CLI and library call."""
@@ -12,19 +47,28 @@ async def _issue_credential_async(vc_claims: dict, options: dict, key_jwk_str: s
         options["proofPurpose"] = "assertionMethod"
 
     issuer = vc_claims.get("issuer")
-    # Derive verificationMethod only for did:key issuer; for did:web let DIDKit choose default
-    if issuer and issuer.startswith("did:key") and "verificationMethod" not in options:
-        if hasattr(didkit, "key_to_verification_method"):
-            func = didkit.key_to_verification_method
-        elif hasattr(didkit, "keyToVerificationMethod"):
-            func = didkit.keyToVerificationMethod
-        else:
-            raise AttributeError("key_to_verification_method / keyToVerificationMethod missing")
+    # Derive verificationMethod for did:key or set statically for did:art
+    if issuer and "verificationMethod" not in options:
+        if issuer.startswith("did:key"):
+            if hasattr(didkit, "key_to_verification_method"):
+                func = didkit.key_to_verification_method
+            elif hasattr(didkit, "keyToVerificationMethod"):
+                func = didkit.keyToVerificationMethod
+            else:
+                raise AttributeError("key_to_verification_method / keyToVerificationMethod missing")
 
-        res = func("key", key_jwk_str)
-        options["verificationMethod"] = await res if inspect.isawaitable(res) else res
+            res = func("key", key_jwk_str)
+            options["verificationMethod"] = await res if inspect.isawaitable(res) else res
 
-    # issue_credential
+        elif issuer.startswith("did:art"):
+            # DID-ART documents we generate always expose #masterkey
+            options["verificationMethod"] = f"{issuer}#masterkey"
+
+    # If issuer is did:art, use JWT + ES256K to avoid DIDKit resolver
+    if issuer and issuer.startswith("did:art"):
+        return _sign_es256k_jwt(vc_claims, key_jwk_str)
+
+    # Otherwise fallback to DIDKit path
     if hasattr(didkit, "issue_credential"):
         issue_func = didkit.issue_credential
     elif hasattr(didkit, "issueCredential"):

@@ -11,3 +11,6 @@ torchvision>=0.11.0
 opencv-python>=4.5.4.60
 einops>=0.4.0
 didkit==0.3.3
+python-jose[ecdsa]==3.3.0
+ecdsa
+cryptography

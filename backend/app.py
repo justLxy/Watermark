@@ -128,35 +128,35 @@ def build_manifest(watermarkID, ingredient_path, form_data):
     else:
         # Fallback to generating a new did:web for this asset
         try:
-            # 1. Generate a new key for this DID
-            # Different versions of didkit expose the function with either snake_case or camelCase.
-            if hasattr(didkit, "generate_ed25519_key"):
-                key_jwk_str = didkit.generate_ed25519_key()
-            elif hasattr(didkit, "generateEd25519Key"):
-                key_jwk_str = didkit.generateEd25519Key()
-            else:
-                raise AttributeError("generate_ed25519_key / generateEd25519Key not found in didkit module")
-            key_jwk = json.loads(key_jwk_str)
+            # 1. Generate a new secp256k1 key pair (suitable for DID-ART)
+            from cryptography.hazmat.primitives.asymmetric import ec
+            from cryptography.hazmat.primitives import serialization
+            import base64, hashlib
 
-            # 2. Construct the did:web string
-            need_did_key = (
-                form_data.get('didType') == 'key' or
-                'localhost' in DID_DOMAIN or DID_DOMAIN.startswith('127.')
-            )
+            def b64url(data: bytes) -> str:
+                return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
-            if need_did_key:
-                # Generate did:key from the same JWK
-                if hasattr(didkit, 'key_to_did'):
-                    author_did = didkit.key_to_did('key', key_jwk_str)
-                elif hasattr(didkit, 'keyToDid'):
-                    author_did = didkit.keyToDid('key', key_jwk_str)
-                else:
-                    raise AttributeError('key_to_did / keyToDid not found in didkit module')
-            else:
-                # Build a spec-compliant did:web. Remove http(s):// if present and convert '/' → ':'
-                domain_part = DID_DOMAIN.replace('https://', '').replace('http://', '')
-                domain_part = domain_part.replace('/', ':')
-                author_did = f'did:web:{domain_part}:watermarks:{watermarkID}'
+            priv = ec.generate_private_key(ec.SECP256K1())
+            numbers = priv.private_numbers()
+            pub_numbers = numbers.public_numbers
+
+            d_val = numbers.private_value.to_bytes(32, 'big')
+            x_val = pub_numbers.x.to_bytes(32, 'big')
+            y_val = pub_numbers.y.to_bytes(32, 'big')
+
+            jwk_dict = {
+                "kty": "EC",
+                "crv": "secp256k1",
+                "d": b64url(d_val),
+                "x": b64url(x_val),
+                "y": b64url(y_val)
+            }
+            key_jwk_str = json.dumps(jwk_dict)
+
+            # --- DID:ART generation ---
+            pub_bytes = x_val  # use raw x bytes
+            subject_id = hashlib.sha256(pub_bytes).hexdigest()[:40]
+            author_did = f"did:art:enq:{subject_id}"
             
             # 3. Store the DID and its private key in the manifest dictionary
             # These will be stripped out before saving the manifest file and stored securely in the DB
@@ -265,6 +265,70 @@ def manifest_add_signing(mf):
     mf['sign_cert'] = os.path.join(keys_path, 'es256_certs.pem')
     return mf
 
+def _build_did_art_doc(did_str: str, key_jwk: dict) -> dict:
+    """Helper to construct a DID-ART document given the DID string and key JWK."""
+    return {
+        "@context": [
+            "https://www.w3.org/ns/did/v1",
+            "https://w3c-ccg.github.io/ld-cryptosuite-registry/#ecdsasecp256k1signature2019"
+        ],
+        "id": did_str,
+        "verificationMethod": [
+            {
+                "id": f"{did_str}#masterkey",
+                "type": "EcdsaSecp256k1VerificationKey2019",
+                "controller": did_str,
+                "publicKeyMultibase": key_jwk.get("x")
+            }
+        ],
+        "authentication": [f"{did_str}#masterkey"],
+        "assertionMethod": [f"{did_str}#masterkey"]
+    }
+
+
+# --- Generic DID resolver (fallback when external resolver is unavailable) ---
+@app.route('/resolve', methods=['GET'])
+def resolve_did():
+    """Return a DID Document for any author_did stored in the provenance DB.
+
+    Usage:  GET /resolve?did=<did:art:...>
+    """
+    did_param = request.args.get('did')
+    if not did_param:
+        return "Missing 'did' query parameter", 400
+
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT author_private_key FROM provenance WHERE author_did = ?", (did_param,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return "DID not found", 404
+
+    key_jwk = json.loads(row['author_private_key']) if row['author_private_key'] else {}
+    if did_param.startswith("did:art:"):
+        did_doc = _build_did_art_doc(did_param, key_jwk)
+    else:
+        # For other methods we could add more builders, but for now return key-based JWK
+        did_doc = {
+            "@context": "https://www.w3.org/ns/did/v1",
+            "id": did_param,
+            "verificationMethod": [
+                {
+                    "id": f"{did_param}#owner",
+                    "type": "JsonWebKey2020",
+                    "controller": did_param,
+                    "publicKeyJwk": {k: v for k, v in key_jwk.items() if k != "d"}
+                }
+            ],
+            "authentication": [f"{did_param}#owner"],
+            "assertionMethod": [f"{did_param}#owner"]
+        }
+
+    return jsonify(did_doc)
+
 # --- DID Document Serving Endpoint ---
 @app.route('/watermarks/<watermark_id>/did.json')
 def serve_did_document(watermark_id):
@@ -287,26 +351,23 @@ def serve_did_document(watermark_id):
     key_jwk_str = row['author_private_key']
     key_jwk = json.loads(key_jwk_str)
 
-    # Build DID Document with publicKeyJwk
+    # DID-ART document
     did_doc = {
         "@context": [
             "https://www.w3.org/ns/did/v1",
-            {
-                "@id": "https://w3id.org/security#publicKeyJwk",
-                "@type": "@json"
-            }
+            "https://w3c-ccg.github.io/ld-cryptosuite-registry/#ecdsasecp256k1signature2019"
         ],
         "id": author_did,
         "verificationMethod": [
             {
-                "id": f"{author_did}#owner",
-                "type": "JsonWebKey2020",
+                "id": f"{author_did}#masterkey",
+                "type": "EcdsaSecp256k1VerificationKey2019",
                 "controller": author_did,
-                "publicKeyJwk": {k: v for k, v in key_jwk.items() if k != "d"}  # remove private part
+                "publicKeyMultibase": key_jwk.get("x")
             }
         ],
-        "authentication": [f"{author_did}#owner"],
-        "assertionMethod": [f"{author_did}#owner"]
+        "authentication": [f"{author_did}#masterkey"],
+        "assertionMethod": [f"{author_did}#masterkey"]
     }
 
     return jsonify(did_doc)

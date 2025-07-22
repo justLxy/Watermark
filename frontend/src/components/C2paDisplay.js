@@ -5,6 +5,17 @@ import { createC2pa } from 'c2pa';
 import 'c2pa-wc/dist/components/Indicator';
 import { API_BASE } from '../utils/api';
 
+// Build resolver link accommodating did:art which Universal Resolver does not yet support
+function getResolverUrl(didOrUrl) {
+  if (!didOrUrl) return "#";
+  if (didOrUrl.startsWith("did:art:")) {
+    // Use backend resolver to avoid relying on external domain
+    const encoded = encodeURIComponent(didOrUrl);
+    return `${API_BASE.replace(/\/$/, '')}/resolve?did=${encoded}`;
+  }
+  return `https://dev.uniresolver.io/1.0/identifiers/${didOrUrl}`;
+}
+
 const getCircularReplacer = () => {
   const seen = new WeakSet();
   return (key, value) => {
@@ -182,7 +193,7 @@ const C2paDisplay = ({ file }) => {
           <div className="flex flex-col">
             <span className="text-xs text-slate-500 uppercase tracking-wider">Issued to (Buyer)</span>
             <a 
-              href={`https://dev.uniresolver.io/1.0/identifiers/${subject.id}`} 
+              href={getResolverUrl(subject.id)} 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-sm text-blue-600 hover:text-blue-700 font-mono break-all"
@@ -194,7 +205,7 @@ const C2paDisplay = ({ file }) => {
           <div className="flex flex-col">
             <span className="text-xs text-slate-500 uppercase tracking-wider">Issued by (Author)</span>
              <a 
-              href={`https://dev.uniresolver.io/1.0/identifiers/${vc.issuer}`} 
+              href={getResolverUrl(vc.issuer)} 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-sm text-slate-700 font-mono break-all"
@@ -241,7 +252,7 @@ const C2paDisplay = ({ file }) => {
                   <span className="text-sm text-slate-700 font-medium">{a.name}</span>
                   {a.id && (
                     <a 
-                      href={`https://dev.uniresolver.io/1.0/identifiers/${a.id}`} 
+                      href={getResolverUrl(a.id)} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-xs text-blue-600 hover:text-blue-700 font-mono break-all"

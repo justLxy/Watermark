@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { API_BASE } from '../utils/api';
 
 const CameraScanner = ({ onCapture }) => {
   const videoRef = useRef(null);
@@ -141,7 +142,7 @@ const CameraScanner = ({ onCapture }) => {
       const formData = new FormData();
       formData.append('image', file, file.name);
 
-      const response = await fetch('http://localhost:5001/decode', {
+      const response = await fetch(`${API_BASE}/decode`, {
         method: 'POST',
         body: formData,
       });

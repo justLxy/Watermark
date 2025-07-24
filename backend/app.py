@@ -567,7 +567,7 @@ def encode_image():
             bitlen = tm.schemaCapacity()
             watermark_id = uuidgen(bitlen)
             rgb = cover.convert('RGB')
-            encoded_image = tm.encode(rgb, watermark_id, MODE='binary')
+            encoded_image = tm.encode(rgb, watermark_id, MODE='binary', WM_STRENGTH=1.5)
             
             watermarked_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_watermarked.png")
             encoded_image.save(watermarked_path)

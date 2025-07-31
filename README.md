@@ -1,146 +1,95 @@
-# TrustMark
+# TrustMark Provenance Platform
 
-This repository contains the official, open source implementation of TrustMark watermarking for the Content Authenticity Initiative (CAI) as described in [**TrustMark - Universal Watermarking for Arbitrary Resolution Images**](https://arxiv.org/abs/2311.18297) (`arXiv:2311.18297`) by [Tu Bui](https://www.surrey.ac.uk/people/tu-bui)[^1], [Shruti Agarwal](https://research.adobe.com/person/shruti-agarwal/)[^2], and [John Collomosse](https://www.collomosse.com)[^1] [^2].
+This project provides a provenance and protection solution for artworks, based on TrustMark's invisible watermarking and the C2PA content provenance standard. Users can leverage this platform to add a unique identifier to their original creations or AI-derived artworks. This identifier is embedded as an invisible watermark and linked with major provenance standards like C2PA and W3C DID, enabling persistent and reliable tracking of copyright and history.
 
-[^1]: [DECaDE](https://decade.ac.uk/) Centre for the Decentralized Digital Economy, University of Surrey, UK.
+## Core Features
 
-[^2]: [Adobe Research](https://research.adobe.com/), San Jose, CA.
+1.  **Watermark Encoding**
+    *   Users can upload any image.
+    *   The backend utilizes the TrustMark SDK to embed a unique and invisible digital watermark (ID) into the image pixels.
+    *   Simultaneously, this ID is written into a C2PA Manifest.
+    *   Users can then download the new image, now containing multiple layers of provenance information.
 
-## Overview
+2.  **Watermark Decoding**
+    *   Users can upload a watermarked image.
+    *   The backend first decodes the TrustMark ID from the image pixels.
+    *   Next, the system checks for and parses the C2PA Manifest within the file.
+    *   Finally, all associated provenance, copyright, and edit history information is clearly displayed on the frontend.
 
-This repository contains the following directories:
+3.  **Camera Scanning**
+    *   The frontend application can directly access the device camera.
+    *   It allows users to scan real-world images (e.g., printed artworks) to detect and decode the embedded TrustMark in real-time.
+    *   This feature makes it possible to verify the provenance of physical artworks.
 
-- `/python`: Python implementation of TrustMark for encoding, decoding and removing image watermarks (using PyTorch). For information on configuring TrustMark in Python, see [Configuring TrustMark](python/CONFIG.md). 
-- `/js`: Javascript implementation of TrustMark decoding of image watermarks (using ONNX).  For more information, see [TrustMark - JavaScript implementation](js/README.md).
-- `/rust`: Rust implementation of TrustMark. for more information, see [TrustMark — Rust implementation](rust/README.md).
-- `/c2pa`: Python example of how to indicate the presence of a TrustMark watermark in a C2PA manifest. For more information, see [Using TrustMark with C2PA](c2pa/README.md).
+## Tech Stack
 
-Model files (**ckpt** PyTorch file for Python and **onnx** ONNX file for JavaScript) are not packaged in this repository due to their size, but are downloaded upon first use.  See the code for [URLs and md5 hashes](https://github.com/adobe/trustmark/blob/4ef0dde4abd84d1c6873e7c5024482f849db2c73/python/trustmark/trustmark.py#L30) for a direct download link.
+This project uses a decoupled frontend/backend architecture:
 
-More information:
+*   **Frontend (`/frontend`)**:
+    *   **Framework**: [Next.js](https://nextjs.org/) (React)
+    *   **Key Dependencies**: `c2pa` (for parsing C2PA data client-side), `c2pa-wc` (official C2PA Web Components).
+    *   **Responsibilities**: Provides the UI for file uploads, the camera scanning interface, progress indicators, and visualization of provenance data.
 
-- For answers to common questions, see the [FAQ](FAQ.md).
-- For information on configuring TrustMark in Python, see [Configuring TrustMark](python/CONFIG.md).
+*   **Backend (`/backend`)**:
+    *   **Framework**: [Flask](https://flask.palletsprojects.com/) (Python)
+    *   **Core Libraries**:
+        *   `trustmark`: The official TrustMark SDK for watermark encoding and decoding.
+        *   `c2pa-python`: For creating and signing C2PA manifests on the server.
+        *   `didkit`: For handling and issuing W3C DIDs and Verifiable Credentials.
+    *   **Responsibilities**: Encapsulates the core watermarking logic, metadata generation, parsing, and identity verification.
 
-## Installation
-
-### Prerequisite
-
-You must have Python 3.8.5 or higher to use the TrustMark Python implementation.
-
-### Installing from PyPI
-
-The easiest way to install TrustMark is from the [Python Package Index (PyPI)](https://pypi.org/project/trustmark/) by entering this command:
-
-```
-pip install trustmark
-```
-
-Alternatively, after you've cloned the repository, you can install from the `python` directory:
-
-```
-cd trustmark/python
-pip install .
-```
-
-## Quickstart
-
-To get started quickly, run the `python/test.py` script that provides examples of watermarking several 
-image files from the `images` directory. 
-
-### Run the example
-
-Run the example as follows:
-
-```sh
-cd trustmark/python
-python test.py
-```
-
-You'll see output like this:
+## Directory Structure
 
 ```
-Initializing TrustMark watermarking with ECC using [cpu]
-Extracted secret: 1000000100001110000010010001011110010001011000100000100110110 (schema 1)
-PSNR = 50.357909
-No secret after removal
+.
+├── backend/            # Python Flask backend application
+├── c2pa/               # C2PA-related examples and keys
+├── didkit-python/      # DIDKit Python library
+├── frontend/           # Next.js frontend application
+├── python/             # TrustMark Python core library
+└── README.md           # Project documentation
 ```
 
-### Example script
+## Installation and Setup
 
-The `python/test.py` script provides examples of watermarking a JPEG photo, a JPEG GenAI image, and an RGBA PNG image. The example uses TrustMark variant Q to encode the word `mysecret` in ASCII7 encoding into the image `ufo_240.jpg` which is then decoded, and then removed from the image.
+### Prerequisites
 
-```python
-from trustmark import TrustMark
-from PIL import Image
+*   [Node.js](https://nodejs.org/) (v18 or higher)
+*   [Python](https://www.python.org/) (v3.9 or higher)
+*   `pip` (Python package manager)
 
-# init
-tm=TrustMark(verbose=True, model_type='Q') # or try P
+### 1. Backend Setup
 
-# encoding example
-cover = Image.open('images/ufo_240.jpg').convert('RGB')
-tm.encode(cover, 'mysecret').save('ufo_240_Q.png')
+First, navigate to the backend directory and install the required Python dependencies.
 
-# decoding example
-cover = Image.open('images/ufo_240_Q.png').convert('RGB')
-wm_secret, wm_present, wm_schema = tm.decode(cover)
+```bash
+# Navigate to the backend directory
+cd backend
 
-if wm_present:
-   print(f'Extracted secret: {wm_secret}')
-else:
-   print('No watermark detected')
+# Install dependencies
+pip install -r requirements.txt
 
-# removal example
-stego = Image.open('images/ufo_240_Q.png').convert('RGB')
-im_recover = tm.remove_watermark(stego)
-im_recover.save('images/recovered.png')
+# Start the backend server (runs on http://0.0.0.0:5001 by default)
+python3 app.py
 ```
 
-## GPU setup
+### 2. Frontend Setup
 
-TrustMark runs well on CPU hardware.  
+Open a new terminal window, navigate to the frontend directory, and install its dependencies.
 
-To leverage GPU compute for the PyTorch implementation on Ubuntu Linux, first install Conda, then use the following commands to install:
+```bash
+# Navigate to the frontend directory
+cd frontend
 
-```sh
-conda create --name trustmark python=3.10
-conda activate trustmark
-conda install pytorch cudatoolkit=12.8 -c pytorch -c conda-forge
-pip install torch==2.1.2 torchvision==0.16.2 -f https://download.pytorch.org/whl/torch_stable.html
-pip install .
+# Install npm dependencies
+npm install
+
+# Start the frontend development server (runs on http://localhost:3000 by default)
+npm run dev
 ```
 
-For the JavaScript implementation, a Chromium browser automatically uses WebGPU, if available.
+> **Note**: If you need to serve the frontend over HTTPS (e.g., for camera access), ensure you have locally-trusted certificates (`localhost+2-key.pem` and `localhost+2.pem`) and run `npm run dev:httpss`.
 
-## Data schema
+### 3. Accessing the Application
 
-TrustMark encodes a payload (the watermark data embedded within the image) of 100 bits.
-You can configure an error correction level over the raw 100 bits of payload to maintain reliability under transformations or noise. 
-
-In payload encoding, the version bits comprise two reserved (unused) bits, and two bits encoding an integer value 0-3 that specifies the data schema as follows: 
-- 0: BCH_SUPER
-- 1: BCH_5
-- 2: BCH_4
-- 3: BCH_3
-
-For more details and information on configuring the encoding mode in Python, see [Configuring TrustMark](python/CONFIG.md). 
-
-## Citation
-
-If you find this work useful, please cite the repository and/or TrustMark paper as follows:
-
-```
-@article{trustmark,
-title={Trustmark: Universal Watermarking for Arbitrary Resolution Images},
-author={Bui, Tu and Agarwal, Shruti and Collomosse, John},
-journal = {ArXiv e-prints},
-archivePrefix = "arXiv",
-eprint = {2311.18297},
-year = 2023,
-month = nov
-}
-```
-
-## License 
-
-This package is is distributed under the terms of the [MIT license](https://github.com/adobe/trustmark/blob/main/LICENSE).
+Once both servers are running, open your browser and navigate to `http://localhost:3000` to use the platform.

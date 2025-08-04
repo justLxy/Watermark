@@ -12,6 +12,7 @@
   "dependencies": {
     "c2pa": "^0.30.9",
     "c2pa-wc": "^0.14.9",
+    "lucide-react": "^0.536.0",
     "next": "15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

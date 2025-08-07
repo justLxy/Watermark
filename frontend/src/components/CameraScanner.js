@@ -10,6 +10,7 @@ const CameraScanner = ({ onCapture }) => {
   const [scanning, setScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState('');
   const intervalRef = useRef(null);
+  const processingRef = useRef(false); // Track if a decode request is in-flight
   const CROP_RATIO = 0.9; // 90% of the shorter dimension to form square crop
   const [overlayStyle, setOverlayStyle] = useState({});
 
@@ -114,16 +115,16 @@ const CameraScanner = ({ onCapture }) => {
     const videoH = video.videoHeight;
     if (!videoW || !videoH) return null;
 
-    // Determine centered square crop region
-    const dim = Math.min(videoW, videoH) * CROP_RATIO;
-    const cropX = (videoW - dim) / 2;
-    const cropY = (videoH - dim) / 2;
+    // Determine centered square crop region (on the original video frame)
+    const srcDim = Math.min(videoW, videoH) * CROP_RATIO;
+    const cropX = (videoW - srcDim) / 2;
+    const cropY = (videoH - srcDim) / 2;
 
     const canvas = document.createElement('canvas');
-    canvas.width = dim;
-    canvas.height = dim;
+    canvas.width = srcDim;
+    canvas.height = srcDim;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, cropX, cropY, dim, dim, 0, 0, dim, dim);
+    ctx.drawImage(video, cropX, cropY, srcDim, srcDim, 0, 0, srcDim, srcDim);
 
     return new Promise((resolve) => {
       canvas.toBlob(blob => {
@@ -164,10 +165,19 @@ const CameraScanner = ({ onCapture }) => {
     setScanning(true);
     setScanStatus('Scanning for watermarks...');
     
+    const SCAN_INTERVAL = 300; // ms – capture attempts every 0.3 s when idle
+
     intervalRef.current = setInterval(async () => {
+      // Avoid piling up concurrent decode requests
+      if (processingRef.current) return;
+      processingRef.current = true;
+
       try {
         const frameData = await captureFrame();
-        if (!frameData) return;
+        if (!frameData) {
+          processingRef.current = false;
+          return;
+        }
 
         setScanStatus('Checking frame...');
         const hasWatermark = await checkForWatermark(frameData.file);
@@ -184,8 +194,10 @@ const CameraScanner = ({ onCapture }) => {
       } catch (err) {
         console.error('Auto scan error:', err);
         setScanStatus('Scan error, retrying...');
+      } finally {
+        processingRef.current = false;
       }
-    }, 1000); // Check every 1 second
+    }, SCAN_INTERVAL);
   }, [onCapture]);
 
   const stopAutoScan = () => {

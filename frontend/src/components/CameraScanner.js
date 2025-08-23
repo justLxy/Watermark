@@ -165,7 +165,7 @@ const CameraScanner = ({ onCapture }) => {
     setScanning(true);
     setScanStatus('Scanning for watermarks...');
     
-    const SCAN_INTERVAL = 300; // ms – capture attempts every 0.3 s when idle
+    const SCAN_INTERVAL = 1500; // ms – capture attempts every 1.5 s when idle
 
     intervalRef.current = setInterval(async () => {
       // Avoid piling up concurrent decode requests

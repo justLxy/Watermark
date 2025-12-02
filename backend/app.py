@@ -40,7 +40,8 @@ from trustmark import TrustMark
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200 MB upload limit
+# Remove global upload size limit to allow arbitrarily large images
+# (Note: keep an eye on memory/CPU usage in production environments)
 CORS(app)
 
 # --- Database Initialization ---
@@ -556,13 +557,10 @@ def encode_image():
 
         # 2. Process image and embed watermark
         with Image.open(input_path) as cover:
-            # --- Image Resizing Logic for Large Files ---
-            MAX_PIXELS = 4096 * 2160  # Approx 4K resolution
+            # Keep original resolution; do not downscale large images
             original_width, original_height = cover.width, cover.height
-            if original_width * original_height > MAX_PIXELS:
-                print(f"Resizing large image ({original_width}x{original_height})...")
-                cover.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
-            
+            print(f"Processing image at original size: {original_width}x{original_height}")
+
             # Generate watermark ID and embed it
             bitlen = tm.schemaCapacity()
             watermark_id = uuidgen(bitlen)

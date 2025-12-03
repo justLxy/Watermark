@@ -6,7 +6,7 @@ import string
 import subprocess
 import io
 import sqlite3
-import didkit
+# import didkit  # Commented out - not used in app.py and has compatibility issues
 import urllib.parse # <-- Import url-encoding library
 from datetime import datetime
 # Remove asyncio as it's no longer directly used here

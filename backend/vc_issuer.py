@@ -3,9 +3,18 @@ import sys
 import json
 import asyncio
 import inspect
-import didkit
 import base64, json as _json, hashlib
 from ecdsa import SigningKey, SECP256k1
+
+# Try to import didkit, but make it optional
+# It's only needed for did:key support; did:art works without it
+try:
+    import didkit
+    DIDKIT_AVAILABLE = True
+except (ImportError, OSError) as e:
+    print(f"Warning: didkit not available ({e}). Only did:art DIDs will be supported.", file=sys.stderr)
+    didkit = None
+    DIDKIT_AVAILABLE = False
 
 # Helper to base64url without padding
 def _b64url(data: bytes) -> str:
@@ -50,6 +59,8 @@ async def _issue_credential_async(vc_claims: dict, options: dict, key_jwk_str: s
     # Derive verificationMethod for did:key or set statically for did:art
     if issuer and "verificationMethod" not in options:
         if issuer.startswith("did:key"):
+            if not DIDKIT_AVAILABLE:
+                raise RuntimeError("didkit is required for did:key support but is not available")
             if hasattr(didkit, "key_to_verification_method"):
                 func = didkit.key_to_verification_method
             elif hasattr(didkit, "keyToVerificationMethod"):
@@ -68,7 +79,10 @@ async def _issue_credential_async(vc_claims: dict, options: dict, key_jwk_str: s
     if issuer and issuer.startswith("did:art"):
         return _sign_es256k_jwt(vc_claims, key_jwk_str)
 
-    # Otherwise fallback to DIDKit path
+    # Otherwise fallback to DIDKit path (requires didkit to be available)
+    if not DIDKIT_AVAILABLE:
+        raise RuntimeError("didkit is required for this operation but is not available. Use did:art instead.")
+    
     if hasattr(didkit, "issue_credential"):
         issue_func = didkit.issue_credential
     elif hasattr(didkit, "issueCredential"):
@@ -117,6 +131,9 @@ async def main():
 
     # Derive verificationMethod from the key if not explicitly provided
     if "verificationMethod" not in options:
+        if not DIDKIT_AVAILABLE:
+            print("Error: didkit is not available. Cannot derive verification method.", file=sys.stderr)
+            sys.exit(1)
         try:
             # Select the correct function name depending on DIDKit version
             if hasattr(didkit, "key_to_verification_method"):
@@ -135,6 +152,10 @@ async def main():
         options["verificationMethod"] = verification_method
 
     try:
+        if not DIDKIT_AVAILABLE:
+            print("Error: didkit is not available. Cannot issue credential.", file=sys.stderr)
+            sys.exit(1)
+            
         # issue_credential may be named issueCredential and may be sync or async.
         if hasattr(didkit, "issue_credential"):
             issue_func = didkit.issue_credential

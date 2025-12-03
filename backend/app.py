@@ -40,8 +40,8 @@ from trustmark import TrustMark
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
-# Remove global upload size limit to allow arbitrarily large images
-# (Note: keep an eye on memory/CPU usage in production environments)
+# Explicitly set a very high limit for file uploads (e.g., 100 GB) to effectively remove the limit
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 * 1024 
 CORS(app)
 
 # --- Database Initialization ---

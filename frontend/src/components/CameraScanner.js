@@ -13,6 +13,13 @@ const CameraScanner = ({ onCapture }) => {
   const processingRef = useRef(false); // Track if a decode request is in-flight
   const CROP_RATIO = 0.9; // 90% of the shorter dimension to form square crop
   const [overlayStyle, setOverlayStyle] = useState({});
+  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const aspectRatioRef = useRef('1:1');
+
+  useEffect(() => {
+    aspectRatioRef.current = aspectRatio;
+    updateOverlayStyle();
+  }, [aspectRatio]);
 
   // Calculate overlay dimensions based on video aspect ratio
   const updateOverlayStyle = () => {
@@ -42,12 +49,39 @@ const CameraScanner = ({ onCapture }) => {
       actualVideoDisplayW = displayH * videoAspect;
     }
 
-    // Calculate square size (CROP_RATIO of shorter dimension in the actual video display)
-    const squareSize = Math.min(actualVideoDisplayW, actualVideoDisplayH) * CROP_RATIO;
+    // Calculate crop size based on aspect ratio
+    let targetW, targetH;
+    const currentRatio = aspectRatioRef.current;
+    
+    if (currentRatio === '1:1') {
+        const size = Math.min(actualVideoDisplayW, actualVideoDisplayH) * CROP_RATIO;
+        targetW = size;
+        targetH = size;
+    } else if (currentRatio === '4:3') {
+        const maxW = actualVideoDisplayW * CROP_RATIO;
+        const maxH = actualVideoDisplayH * CROP_RATIO;
+        if (maxW / maxH > 4/3) {
+            targetH = maxH;
+            targetW = targetH * 4/3;
+        } else {
+            targetW = maxW;
+            targetH = targetW * 3/4;
+        }
+    } else if (currentRatio === '3:4') {
+        const maxW = actualVideoDisplayW * CROP_RATIO;
+        const maxH = actualVideoDisplayH * CROP_RATIO;
+        if (maxW / maxH > 3/4) {
+            targetH = maxH;
+            targetW = targetH * 3/4;
+        } else {
+            targetW = maxW;
+            targetH = targetW * 4/3;
+        }
+    }
     
     setOverlayStyle({
-      width: `${squareSize}px`,
-      height: `${squareSize}px`,
+      width: `${targetW}px`,
+      height: `${targetH}px`,
     });
   };
 
@@ -115,16 +149,44 @@ const CameraScanner = ({ onCapture }) => {
     const videoH = video.videoHeight;
     if (!videoW || !videoH) return null;
 
-    // Determine centered square crop region (on the original video frame)
-    const srcDim = Math.min(videoW, videoH) * CROP_RATIO;
-    const cropX = (videoW - srcDim) / 2;
-    const cropY = (videoH - srcDim) / 2;
+    // Determine centered crop region (on the original video frame)
+    let srcW, srcH;
+    const currentRatio = aspectRatioRef.current;
+
+    if (currentRatio === '1:1') {
+        const size = Math.min(videoW, videoH) * CROP_RATIO;
+        srcW = size;
+        srcH = size;
+    } else if (currentRatio === '4:3') {
+        const maxW = videoW * CROP_RATIO;
+        const maxH = videoH * CROP_RATIO;
+        if (maxW / maxH > 4/3) {
+            srcH = maxH;
+            srcW = srcH * 4/3;
+        } else {
+            srcW = maxW;
+            srcH = srcW * 3/4;
+        }
+    } else if (currentRatio === '3:4') {
+        const maxW = videoW * CROP_RATIO;
+        const maxH = videoH * CROP_RATIO;
+        if (maxW / maxH > 3/4) {
+            srcH = maxH;
+            srcW = srcH * 3/4;
+        } else {
+            srcW = maxW;
+            srcH = srcW * 4/3;
+        }
+    }
+
+    const cropX = (videoW - srcW) / 2;
+    const cropY = (videoH - srcH) / 2;
 
     const canvas = document.createElement('canvas');
-    canvas.width = srcDim;
-    canvas.height = srcDim;
+    canvas.width = srcW;
+    canvas.height = srcH;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, cropX, cropY, srcDim, srcDim, 0, 0, srcDim, srcDim);
+    ctx.drawImage(video, cropX, cropY, srcW, srcH, 0, 0, srcW, srcH);
 
     return new Promise((resolve) => {
       canvas.toBlob(blob => {
@@ -251,6 +313,27 @@ const CameraScanner = ({ onCapture }) => {
           <p className="text-sm text-center text-gray-600">{scanStatus}</p>
         )}
         
+        <div className="flex justify-center space-x-2 pb-2">
+           <button 
+             onClick={() => setAspectRatio('1:1')}
+             className={`px-3 py-1 rounded text-sm ${aspectRatio === '1:1' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
+           >
+             Square (1:1)
+           </button>
+           <button 
+             onClick={() => setAspectRatio('4:3')}
+             className={`px-3 py-1 rounded text-sm ${aspectRatio === '4:3' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
+           >
+             Landscape (4:3)
+           </button>
+           <button 
+             onClick={() => setAspectRatio('3:4')}
+             className={`px-3 py-1 rounded text-sm ${aspectRatio === '3:4' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
+           >
+             Portrait (3:4)
+           </button>
+        </div>
+
         <div className="flex space-x-2">
           {scanning ? (
             <button 

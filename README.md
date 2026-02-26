@@ -69,6 +69,10 @@ cd backend
 # Install dependencies
 pip install -r requirements.txt
 
+# Install TrustMark library
+cd /Users/lvxuanyi/Desktop/articulator/Watermark/python
+pip install -e .
+
 # Start the backend server (runs on http://0.0.0.0:5001 by default)
 python3 app.py
 ```

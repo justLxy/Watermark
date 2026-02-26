@@ -34,8 +34,8 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 # Disable Pillow's decompression bomb check for large, trusted images
 Image.MAX_IMAGE_PIXELS = None
 
-# Add parent directory to path to import trustmark
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add python directory to path to import trustmark
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../python')))
 from trustmark import TrustMark
 
 # --- Flask App Initialization ---

@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import uuid
 import random
 import string
 import subprocess
@@ -98,18 +99,40 @@ def build_softbinding(alg, val):
     sba['data']['blocks'].append(blk)
     return sba
 
-def build_manifest(watermarkID, ingredient_path, form_data):
+def build_manifest(watermarkID, ingredient_path, form_data, extra_ingredient_paths=None):
     """Builds a C2PA manifest dictionary from form data."""
 
     software_agent = form_data.get('softwareAgent', 'Articulator.ai')
+    claim_generator_version = form_data.get('claimGeneratorVersion', '1.0.0')
+    ingredient_paths = []
+    ingredient_instance_ids = []
+    for raw_path in list(extra_ingredient_paths or []):
+        abs_path = os.path.abspath(raw_path)
+        ingredient_paths.append(abs_path)
+        if abs_path.endswith('.json'):
+            try:
+                with open(abs_path, 'r') as ingredient_file:
+                    ingredient_definition = json.load(ingredient_file)
+                instance_id = ingredient_definition.get('instance_id') or ingredient_definition.get('instanceId')
+                if instance_id:
+                    ingredient_instance_ids.append(instance_id)
+            except Exception as e:
+                print(f"Failed to parse ingredient definition {abs_path}: {e}", file=sys.stderr)
 
     # --- Base Manifest Structure ---
     manifest = {
         'claim_generator': software_agent,
+        'claim_generator_info': [
+            {
+                'name': software_agent,
+                'version': claim_generator_version,
+            }
+        ],
         'title': form_data.get('title', os.path.basename(ingredient_path)),
-        'ingredient_paths': [os.path.abspath(ingredient_path)],
         'assertions': [],
     }
+    if ingredient_paths:
+        manifest['ingredient_paths'] = ingredient_paths
 
     # --- Assertions ---
     assertions = []
@@ -196,6 +219,66 @@ def build_manifest(watermarkID, ingredient_path, form_data):
 
     assertions.append(cwa)
 
+    # 2b. Articulator artwork metadata assertion (best-effort, may be large)
+    # Goal: embed all artwork metadata fields (if provided) into C2PA.
+    artwork_metadata_raw = form_data.get('artworkMetadata')
+    if artwork_metadata_raw:
+        try:
+            # Keep the original JSON string for optional compression
+            raw_bytes = artwork_metadata_raw.encode('utf-8', errors='replace')
+            parsed = json.loads(artwork_metadata_raw)
+
+            # If the payload is large, store it compressed to avoid oversize manifests.
+            # Still keeps all fields, just encoded.
+            max_inline_bytes = 60_000
+            if len(raw_bytes) <= max_inline_bytes:
+                assertions.append({
+                    "label": "com.articulator.artwork-metadata",
+                    "data": parsed
+                })
+            else:
+                import gzip
+                import base64
+                import hashlib
+
+                gz = gzip.compress(raw_bytes, compresslevel=9)
+                b64 = base64.b64encode(gz).decode('ascii')
+                sha = hashlib.sha256(raw_bytes).hexdigest()
+                assertions.append({
+                    "label": "com.articulator.artwork-metadata",
+                    "data": {
+                        "encoding": "gzip+base64",
+                        "mime": "application/json",
+                        "bytes": len(raw_bytes),
+                        "sha256": sha,
+                        "data": b64
+                    }
+                })
+        except Exception as e:
+            print(f"Failed to embed artworkMetadata into C2PA manifest: {e}", file=sys.stderr)
+
+    derived_from = None
+    derived_from_raw = form_data.get('derivedFrom')
+    if derived_from_raw:
+        try:
+            parsed_derived_from = json.loads(derived_from_raw)
+            if isinstance(parsed_derived_from, dict):
+                derived_from = parsed_derived_from
+                assertions.append({
+                    "label": "com.articulator.derivation",
+                    "data": {
+                        "relationship": derived_from.get("relationship", "derivedFrom"),
+                        "summary": derived_from.get("summary", "Modified from an existing artwork."),
+                        "source": {
+                            "title": derived_from.get("title"),
+                            "url": derived_from.get("url"),
+                            "did": derived_from.get("did"),
+                        }
+                    }
+                })
+        except Exception as e:
+            print(f"Failed to embed derivedFrom into C2PA manifest: {e}", file=sys.stderr)
+
     # 3. IPTC Metadata Assertion
     # This is often better for descriptive metadata that components can display.
     if author_name or work_description:
@@ -220,39 +303,67 @@ def build_manifest(watermarkID, ingredient_path, form_data):
     training_policy = form_data.get('trainingPolicy')  # e.g., "notAllowed"
     if training_policy in ['allowed', 'notAllowed', 'constrained']:
         training_assertion = {
-            "label": "c2pa.training-mining",
+            "label": "cawg.training-mining",
+            "created": False,
             "data": {
                 "entries": {
-                    "c2pa.ai_generative_training": {"use": training_policy},
-                    "c2pa.ai_inference": {"use": training_policy},
-                    "c2pa.ai_training": {"use": training_policy},
-                    "c2pa.data_mining": {"use": training_policy}
+                    "cawg.ai_generative_training": {"use": training_policy},
+                    "cawg.ai_inference": {"use": training_policy},
+                    "cawg.ai_training": {"use": training_policy},
+                    "cawg.data_mining": {"use": training_policy}
                 }
             }
         }
         if training_policy == 'constrained':
             constraint_info = form_data.get('constraintInfo', 'Contact asset creator for details.')
             # Update all entries with constraint_info if needed, for now just data_mining
-            training_assertion['data']['entries']['c2pa.data_mining']['constraint_info'] = constraint_info
+            training_assertion['data']['entries']['cawg.data_mining']['constraint_info'] = constraint_info
 
         assertions.append(training_assertion)
 
-    # 5. Actions Assertion (CORRECTED STRUCTURE)
-    actions = []
-    # Created Action
-    created_action = { 'action': 'c2pa.created', 'softwareAgent': software_agent }
+    # 5. Actions Assertion - align with the current actions.v2 guidance.
     digital_source_type = form_data.get('digitalSourceType')
-    if digital_source_type and digital_source_type.startswith('http://cv.iptc.org/newscodes/digitalsourcetype/'):
-        created_action['digitalSourceType'] = digital_source_type
-    actions.append(created_action)
+    actions = []
+    if ingredient_instance_ids:
+        opened_action = {
+            'action': 'c2pa.opened',
+            'softwareAgent': software_agent,
+            'parameters': {
+                'ingredientIds': ingredient_instance_ids,
+            }
+        }
+        actions.append(opened_action)
+
+        created_from_ingredient_action = {
+            'action': 'c2pa.created',
+            'softwareAgent': software_agent,
+            'parameters': {
+                'ingredientIds': ingredient_instance_ids,
+            }
+        }
+        if digital_source_type and digital_source_type.startswith('http://cv.iptc.org/newscodes/digitalsourcetype/'):
+            created_from_ingredient_action['digitalSourceType'] = digital_source_type
+        if derived_from:
+            created_from_ingredient_action['parameters']['org.articulator.derivation'] = {
+                'relationship': derived_from.get('relationship', 'derivedFrom'),
+                'summary': derived_from.get('summary'),
+            }
+        actions.append(created_from_ingredient_action)
+    else:
+        created_action = { 'action': 'c2pa.created', 'softwareAgent': software_agent }
+        if digital_source_type and digital_source_type.startswith('http://cv.iptc.org/newscodes/digitalsourcetype/'):
+            created_action['digitalSourceType'] = digital_source_type
+        actions.append(created_action)
     # Watermarked Action
-    actions.append({'action': 'c2pa.watermarked'})
+    actions.append({'action': 'c2pa.watermarked', 'softwareAgent': software_agent})
     
-    # Wrap actions in a single "c2pa.actions" assertion
+    # Wrap actions in a single "c2pa.actions.v2" assertion
     actions_assertion = {
-        "label": "c2pa.actions",
+        "label": "c2pa.actions.v2",
+        "created": True,
         "data": {
-            "actions": actions
+            "actions": actions,
+            "allActionsIncluded": True,
         }
     }
     assertions.append(actions_assertion)
@@ -571,8 +682,55 @@ def encode_image():
             encoded_image.save(watermarked_path)
             cleanup_paths.append(watermarked_path)
 
+        ingredient_paths = []
+        derived_from = None
+        derived_from_raw = form_data.get('derivedFrom')
+        if derived_from_raw:
+            try:
+                parsed_derived_from = json.loads(derived_from_raw)
+                if isinstance(parsed_derived_from, dict):
+                    derived_from = parsed_derived_from
+            except Exception as e:
+                print(f"Failed to parse derivedFrom metadata: {e}", file=sys.stderr)
+        ingredient_files = request.files.getlist('ingredientImage')
+        for index, ingredient_file in enumerate(ingredient_files):
+            if not ingredient_file or ingredient_file.filename == '':
+                continue
+
+            ingredient_ext = os.path.splitext(ingredient_file.filename)[1] or '.png'
+            ingredient_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_ingredient_{index}{ingredient_ext}")
+            ingredient_file.save(ingredient_path)
+            cleanup_paths.append(ingredient_path)
+            ingredient_title = ingredient_file.filename or f"Ingredient {index + 1}"
+            ingredient_provenance = None
+            ingredient_relationship = 'parentOf'
+            if index == 0 and derived_from:
+                ingredient_title = derived_from.get('title') or ingredient_title
+                ingredient_provenance = derived_from.get('url')
+                requested_relationship = derived_from.get('relationship')
+                if requested_relationship in ('parentOf', 'componentOf'):
+                    ingredient_relationship = requested_relationship
+
+            ingredient_definition = {
+                "title": ingredient_title,
+                "format": ingredient_file.mimetype or "image/png",
+                "instance_id": f"xmp:iid:{uuid.uuid4()}",
+                "relationship": ingredient_relationship,
+            }
+            if ingredient_provenance:
+                ingredient_definition["provenance"] = ingredient_provenance
+
+            ingredient_definition_path = os.path.join(
+                OUTPUT_FOLDER,
+                f"{base_filename}_ingredient_{index}.json"
+            )
+            with open(ingredient_definition_path, 'w') as ingredient_definition_file:
+                json.dump(ingredient_definition, ingredient_definition_file, indent=2)
+            cleanup_paths.append(ingredient_definition_path)
+            ingredient_paths.append(os.path.abspath(ingredient_definition_path))
+
         # 3. Build and save manifest
-        manifest = build_manifest(watermark_id, input_path, form_data)
+        manifest = build_manifest(watermark_id, input_path, form_data, ingredient_paths)
         
         # Separate private data from public manifest data
         author_did = manifest.pop('author_did', None)

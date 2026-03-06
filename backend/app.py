@@ -7,6 +7,7 @@ import string
 import subprocess
 import io
 import sqlite3
+import shutil
 # import didkit  # Commented out - not used in app.py and has compatibility issues
 import urllib.parse # <-- Import url-encoding library
 from datetime import datetime
@@ -380,6 +381,75 @@ def manifest_add_signing(mf):
     mf['sign_cert'] = os.path.join(keys_path, 'es256_certs.pem')
     return mf
 
+def resolve_c2pa_tool_path():
+    potential = shutil.which("c2patool")
+    if potential:
+        return potential
+
+    repo_copy = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'c2pa', 'c2patool'))
+    if os.path.exists(repo_copy):
+        return repo_copy
+
+    return "/root/.cargo/bin/c2patool"
+
+def cleanup_temp_path(path):
+    if not os.path.exists(path):
+        return
+
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        os.remove(path)
+
+def normalize_ingredient_relationship(raw_value, default='parentOf'):
+    if raw_value in ('parentOf', 'componentOf'):
+        return raw_value
+    return default
+
+def build_ingredient_report(asset_path, report_name, cleanup_paths, title=None, provenance=None, relationship=None):
+    ingredient_output_dir = os.path.join(OUTPUT_FOLDER, f"{report_name}_ingredient")
+    if os.path.exists(ingredient_output_dir):
+        cleanup_temp_path(ingredient_output_dir)
+    cleanup_paths.append(ingredient_output_dir)
+
+    cmd = [
+        resolve_c2pa_tool_path(),
+        asset_path,
+        "--ingredient",
+        "--output",
+        ingredient_output_dir,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Exception(
+            "Failed to build ingredient report:\n"
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+
+    ingredient_json_path = None
+    for entry in os.listdir(ingredient_output_dir):
+        if entry.endswith(".json") and entry != "detailed.json":
+            ingredient_json_path = os.path.join(ingredient_output_dir, entry)
+            break
+
+    if not ingredient_json_path:
+        raise Exception(f"No ingredient JSON was generated in {ingredient_output_dir}")
+
+    with open(ingredient_json_path, 'r') as ingredient_file:
+        ingredient_definition = json.load(ingredient_file)
+
+    if title:
+        ingredient_definition["title"] = title
+    if provenance:
+        ingredient_definition["provenance"] = provenance
+    if relationship:
+        ingredient_definition["relationship"] = relationship
+
+    with open(ingredient_json_path, 'w') as ingredient_file:
+        json.dump(ingredient_definition, ingredient_file, indent=2)
+
+    return ingredient_json_path
+
 def _jwk_to_compressed_multibase(jwk: dict) -> str:
     """Convert secp256k1 JWK (with x, y) to multibase (r=base64url) compressed key."""
     x_b = base64.urlsafe_b64decode(jwk['x'] + '=' * (-len(jwk['x']) % 4))
@@ -603,8 +673,6 @@ def authorize_image():
         image_file.seek(0)
         image_file.save(parent_image_path)
         cleanup_paths.append(parent_image_path)
-
-        new_manifest['ingredient_paths'] = [os.path.abspath(parent_image_path)]
         
         manifest_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}.json")
         with open(manifest_path, 'w') as f:
@@ -635,8 +703,7 @@ def authorize_image():
         return str(e), 500
     finally:
         for path in cleanup_paths:
-            if os.path.exists(path):
-                os.remove(path)
+            cleanup_temp_path(path)
 
 
 # --- API Endpoints ---
@@ -692,42 +759,44 @@ def encode_image():
                     derived_from = parsed_derived_from
             except Exception as e:
                 print(f"Failed to parse derivedFrom metadata: {e}", file=sys.stderr)
+        ingredient_relationship = normalize_ingredient_relationship(
+            form_data.get('ingredientRelationship'),
+            default='parentOf',
+        )
         ingredient_files = request.files.getlist('ingredientImage')
-        for index, ingredient_file in enumerate(ingredient_files):
-            if not ingredient_file or ingredient_file.filename == '':
-                continue
+        if ingredient_files:
+            for index, ingredient_file in enumerate(ingredient_files):
+                if not ingredient_file or ingredient_file.filename == '':
+                    continue
 
-            ingredient_ext = os.path.splitext(ingredient_file.filename)[1] or '.png'
-            ingredient_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_ingredient_{index}{ingredient_ext}")
-            ingredient_file.save(ingredient_path)
-            cleanup_paths.append(ingredient_path)
-            ingredient_title = ingredient_file.filename or f"Ingredient {index + 1}"
-            ingredient_provenance = None
-            ingredient_relationship = 'parentOf'
-            if index == 0 and derived_from:
-                ingredient_title = derived_from.get('title') or ingredient_title
-                ingredient_provenance = derived_from.get('url')
-                requested_relationship = derived_from.get('relationship')
-                if requested_relationship in ('parentOf', 'componentOf'):
-                    ingredient_relationship = requested_relationship
+                ingredient_ext = os.path.splitext(ingredient_file.filename)[1] or '.png'
+                ingredient_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_ingredient_{index}{ingredient_ext}")
+                ingredient_file.save(ingredient_path)
+                cleanup_paths.append(ingredient_path)
+                ingredient_title = ingredient_file.filename or f"Ingredient {index + 1}"
+                ingredient_provenance = None
+                if index == 0 and derived_from:
+                    ingredient_title = derived_from.get('title') or ingredient_title
+                    ingredient_provenance = derived_from.get('url')
 
-            ingredient_definition = {
-                "title": ingredient_title,
-                "format": ingredient_file.mimetype or "image/png",
-                "instance_id": f"xmp:iid:{uuid.uuid4()}",
-                "relationship": ingredient_relationship,
-            }
-            if ingredient_provenance:
-                ingredient_definition["provenance"] = ingredient_provenance
-
-            ingredient_definition_path = os.path.join(
-                OUTPUT_FOLDER,
-                f"{base_filename}_ingredient_{index}.json"
+                ingredient_report_path = build_ingredient_report(
+                    ingredient_path,
+                    f"{base_filename}_ingredient_{index}",
+                    cleanup_paths,
+                    title=ingredient_title,
+                    provenance=ingredient_provenance,
+                    relationship=ingredient_relationship,
+                )
+                ingredient_paths.append(os.path.abspath(ingredient_report_path))
+        else:
+            source_report_path = build_ingredient_report(
+                input_path,
+                f"{base_filename}_source",
+                cleanup_paths,
+                title=form_data.get('title', original_filename),
+                relationship='parentOf',
             )
-            with open(ingredient_definition_path, 'w') as ingredient_definition_file:
-                json.dump(ingredient_definition, ingredient_definition_file, indent=2)
-            cleanup_paths.append(ingredient_definition_path)
-            ingredient_paths.append(os.path.abspath(ingredient_definition_path))
+            ingredient_paths.append(os.path.abspath(source_report_path))
 
         # 3. Build and save manifest
         manifest = build_manifest(watermark_id, input_path, form_data, ingredient_paths)
@@ -765,20 +834,7 @@ def encode_image():
         signed_output_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_signed.png")
         cleanup_paths.append(signed_output_path)
 
-        import shutil
-        # Try to locate c2patool in various typical locations
-        potential = shutil.which("c2patool")
-        if potential:
-            c2pa_tool_path = potential
-        else:
-            # packaged repo copy
-            repo_copy = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'c2pa', 'c2patool'))
-            if os.path.exists(repo_copy):
-                c2pa_tool_path = repo_copy
-            else:
-                # default cargo install location inside container
-                cargo_copy = "/root/.cargo/bin/c2patool"
-                c2pa_tool_path = cargo_copy
+        c2pa_tool_path = resolve_c2pa_tool_path()
         print(f"Using c2patool path: {c2pa_tool_path}")
 
         cmd = [c2pa_tool_path, source_for_signing, "-m", manifest_path, "-f", "-o", signed_output_path]
@@ -803,8 +859,7 @@ def encode_image():
         print(f"Cleaning up temporary files: {cleanup_paths}")
         for path in cleanup_paths:
             try:
-                if os.path.exists(path):
-                    os.remove(path)
+                cleanup_temp_path(path)
             except Exception as e_clean:
                 print(f"Failed to clean up file {path}: {e_clean}", file=sys.stderr)
 

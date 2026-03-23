@@ -1,6 +1,6 @@
 # TrustMark Provenance Platform
 
-This project provides a provenance and protection solution for artworks, based on TrustMark's invisible watermarking and the C2PA content provenance standard. Users can leverage this platform to add a unique identifier to their original creations or AI-derived artworks. This identifier is embedded as an invisible watermark and linked with major provenance standards like C2PA and W3C DID, enabling persistent and reliable tracking of copyright and history.
+This project provides a provenance and protection solution for artworks, based on TrustMark's invisible watermarking and the C2PA content provenance standard. Users can leverage this platform to add a unique identifier to their original creations or AI-derived artworks. This identifier is embedded as an invisible watermark and linked with C2PA provenance metadata, enabling persistent and reliable tracking of copyright and history.
 
 ## Core Features
 
@@ -13,8 +13,8 @@ This project provides a provenance and protection solution for artworks, based o
 2.  **Watermark Decoding**
     *   Users can upload a watermarked image.
     *   The backend first decodes the TrustMark ID from the image pixels.
-    *   Next, the system checks for and parses the C2PA Manifest within the file.
-    *   Finally, all associated provenance, copyright, and edit history information is clearly displayed on the frontend.
+    *   The frontend then attempts to read embedded C2PA metadata directly in the browser.
+    *   If embedded metadata is unavailable, the frontend can recover provenance by watermark ID and backend manifest lookup.
 
 3.  **Camera Scanning**
     *   The frontend application can directly access the device camera.
@@ -35,8 +35,7 @@ This project uses a decoupled frontend/backend architecture:
     *   **Core Libraries**:
         *   `trustmark`: The official TrustMark SDK for watermark encoding and decoding.
         *   `c2pa-python`: For creating and signing C2PA manifests on the server.
-        *   `didkit`: For handling and issuing W3C DIDs and Verifiable Credentials.
-    *   **Responsibilities**: Encapsulates the core watermarking logic, metadata generation, parsing, and identity verification.
+    *   **Responsibilities**: Encapsulates watermarking, manifest generation, signing, and provenance lookup.
 
 ## Directory Structure
 
@@ -44,11 +43,14 @@ This project uses a decoupled frontend/backend architecture:
 .
 ├── backend/            # Python Flask backend application
 ├── c2pa/               # C2PA-related examples and keys
-├── didkit-python/      # DIDKit Python library
 ├── frontend/           # Next.js frontend application
 ├── python/             # TrustMark Python core library
 └── README.md           # Project documentation
 ```
+
+## Developer Docs
+
+- Backend implementation details: `backend/README.md`
 
 ## Installation and Setup
 

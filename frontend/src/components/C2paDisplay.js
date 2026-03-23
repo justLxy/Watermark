@@ -3,17 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { createC2pa } from 'c2pa';
 import 'c2pa-wc/dist/components/Indicator';
-import { API_BASE, verifyCredential } from '../utils/api';
 
-// Build resolver link accommodating did:art which Universal Resolver does not yet support
 function getResolverUrl(didOrUrl) {
   if (!didOrUrl) return "#";
-  if (didOrUrl.startsWith("did:art:")) {
-    // Use backend resolver to avoid relying on external domain
-    const encoded = encodeURIComponent(didOrUrl);
-    return `${API_BASE.replace(/\/$/, '')}/resolve?did=${encoded}`;
+  if (/^https?:\/\//i.test(didOrUrl)) {
+    return didOrUrl;
   }
-  return `https://dev.uniresolver.io/1.0/identifiers/${didOrUrl}`;
+  return `https://dev.uniresolver.io/1.0/identifiers/${encodeURIComponent(didOrUrl)}`;
 }
 
 const getCircularReplacer = () => {
@@ -29,6 +25,61 @@ const getCircularReplacer = () => {
   };
 };
 
+const getActiveManifestObject = (manifestStore) => {
+  if (!manifestStore) return null;
+  if (manifestStore.activeManifest && typeof manifestStore.activeManifest === 'object') {
+    return manifestStore.activeManifest;
+  }
+  if (typeof manifestStore.activeManifest === 'string' && manifestStore.manifests) {
+    return manifestStore.manifests[manifestStore.activeManifest] || null;
+  }
+  return null;
+};
+
+const getSoftwareAgentName = (softwareAgent) => {
+  if (!softwareAgent) return null;
+  if (typeof softwareAgent === 'string') return softwareAgent;
+  return softwareAgent.name || null;
+};
+
+const getRelationshipMeta = (relationship) => {
+  switch (relationship) {
+    case 'parentOf':
+      return {
+        label: 'Parent asset',
+        description: 'The current file is derived from this earlier asset or rendition.',
+      };
+    case 'componentOf':
+      return {
+        label: 'Placed component',
+        description: 'This ingredient is composited into the current asset.',
+      };
+    case 'inputTo':
+      return {
+        label: 'Computational input',
+        description: 'This ingredient was used as an input to a generation or editing process.',
+      };
+    default:
+      return {
+        label: relationship || 'Ingredient',
+        description: 'This ingredient contributes to the current asset.',
+      };
+  }
+};
+
+const getActionMeta = (actionName) => {
+  switch (actionName) {
+    case 'c2pa.opened':
+      return 'Opened the parent asset.';
+    case 'c2pa.placed':
+      return 'Placed one or more component ingredients into the composition.';
+    case 'c2pa.created':
+      return 'Created the current asset state represented by this manifest.';
+    default:
+      return actionName?.replace(/^c2pa\./, '').replace(/\./g, ' ') || 'Recorded processing step.';
+  }
+};
+
 const C2paDisplay = ({ file }) => {
   const [manifestStore, setManifestStore] = useState(null);
   const [lookedUpManifest, setLookedUpManifest] = useState(null);
@@ -37,7 +88,6 @@ const C2paDisplay = ({ file }) => {
   const [showRaw, setShowRaw] = useState(false);
   const [c2paInstance, setC2paInstance] = useState(null);
   const [showPanel, setShowPanel] = useState(false);
-  const [verifyResult, setVerifyResult] = useState(null);
 
   // Effect to initialize the C2PA library once on component mount
   useEffect(() => {
@@ -145,8 +195,8 @@ const C2paDisplay = ({ file }) => {
 
   const findAssertion = (label, manifestStore) => {
     // First, try the active manifest, which is the most common case.
-    const activeManifest = manifestStore?.activeManifest;
-    if (activeManifest && typeof activeManifest === 'object') {
+    const activeManifest = getActiveManifestObject(manifestStore);
+    if (activeManifest) {
         const assertionsRoot = activeManifest.assertions;
         if (assertionsRoot) {
             const assertionsArray = Array.isArray(assertionsRoot) ? assertionsRoot : assertionsRoot.data;
@@ -177,21 +227,91 @@ const C2paDisplay = ({ file }) => {
     return null;
   };
 
+  const renderProvenanceFlow = (manifest) => {
+    const activeManifest = getActiveManifestObject(manifest);
+    const ingredients = activeManifest?.ingredients || [];
+    const actionsAssertion = findAssertion('c2pa.actions', manifest);
+    const actions = actionsAssertion?.data?.actions || [];
+
+    if (!ingredients.length && !actions.length) return null;
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center space-x-2">
+          <div className="w-2 h-2 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"></div>
+          <h4 className="text-sm font-semibold text-slate-800 tracking-wide">PROVENANCE FLOW</h4>
+        </div>
+        <div className="ml-4 space-y-3">
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Ingredient relationships below follow the current C2PA v3 model: `parentOf` marks the earlier asset version,
+            `componentOf` marks placed source material, and `inputTo` marks computational inputs.
+          </p>
+
+          {ingredients.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs text-slate-500 uppercase tracking-wider">Ingredients</span>
+              {ingredients.map((ingredient, index) => {
+                const meta = getRelationshipMeta(ingredient.relationship);
+                return (
+                  <div key={ingredient.instance_id || ingredient.instanceId || ingredient.label || index} className="rounded-xl border border-slate-200/70 bg-slate-50/80 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">
+                          {ingredient.title || `Ingredient ${index + 1}`}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">{meta.description}</div>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 border border-slate-200">
+                        {meta.label}
+                      </span>
+                    </div>
+                    {(ingredient.format || ingredient.instance_id || ingredient.instanceId) && (
+                      <div className="mt-2 space-y-1">
+                        {ingredient.format && (
+                          <div className="text-xs text-slate-500">Format: <span className="text-slate-700">{ingredient.format}</span></div>
+                        )}
+                        {(ingredient.instance_id || ingredient.instanceId) && (
+                          <div className="text-xs text-slate-500 break-all">Instance ID: <span className="text-slate-700 font-mono">{ingredient.instance_id || ingredient.instanceId}</span></div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {actions.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs text-slate-500 uppercase tracking-wider">Actions</span>
+              {actions.map((action, index) => {
+                const linkedCount = action?.parameters?.ingredientIds?.length || action?.parameters?.ingredients?.length || 0;
+                const agentName = getSoftwareAgentName(action.softwareAgent);
+                return (
+                  <div key={`${action.action}-${index}`} className="rounded-xl border border-slate-200/70 bg-white/80 p-3">
+                    <div className="text-sm font-medium text-slate-800">{action.action?.replace(/^c2pa\./, '') || 'action'}</div>
+                    <div className="text-xs text-slate-500 mt-1">{getActionMeta(action.action)}</div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                      {agentName && <span>Software: <span className="text-slate-700">{agentName}</span></span>}
+                      {linkedCount > 0 && <span>Linked ingredients: <span className="text-slate-700">{linkedCount}</span></span>}
+                      {action.digitalSourceType && <span>Source type recorded</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderAuthorization = (manifest) => {
     const authAssertion = findAssertion('com.trustmark.authorization', manifest);
     if (!authAssertion) return null;
 
     const vc = authAssertion.data;
     const subject = vc.credentialSubject;
-
-    const handleVerify = async () => {
-      try {
-        const res = await verifyCredential(vc.jwt);
-        setVerifyResult(res);
-      } catch (e) {
-        setVerifyResult({ error: e.message, valid: false });
-      }
-    };
 
     return (
       <div className="space-y-3">
@@ -207,7 +327,7 @@ const C2paDisplay = ({ file }) => {
               target="_blank" 
               rel="noopener noreferrer"
               className="text-sm text-blue-600 hover:text-blue-700 font-mono break-all"
-              title="View Buyer's DID in Universal Resolver"
+              title="Open buyer identifier"
             >
               {subject.id}
             </a>
@@ -219,7 +339,7 @@ const C2paDisplay = ({ file }) => {
               target="_blank" 
               rel="noopener noreferrer"
               className="text-sm text-slate-700 font-mono break-all"
-              title="View Author's DID in Universal Resolver"
+              title="Open issuer identifier"
             >
               {vc.issuer}
             </a>
@@ -232,14 +352,6 @@ const C2paDisplay = ({ file }) => {
             <span className="text-xs text-slate-500 uppercase tracking-wider">Issued on</span>
             <span className="text-sm text-slate-700">{new Date(vc.issuanceDate).toLocaleString()}</span>
           </div>
-          {vc.jwt && (
-            <div className="flex items-center space-x-2 pt-2">
-              <button onClick={handleVerify} className="px-3 py-1 text-xs bg-slate-800 text-white rounded-md hover:bg-slate-700">Verify Signature</button>
-              {verifyResult && (
-                <span className={`text-xs font-semibold ${verifyResult.valid ? 'text-green-600' : 'text-red-600'}`}>{verifyResult.valid ? 'Valid' : 'Invalid'}</span>
-              )}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -274,7 +386,7 @@ const C2paDisplay = ({ file }) => {
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-xs text-blue-600 hover:text-blue-700 font-mono break-all"
-                      title="View DID in Universal Resolver"
+                      title="Open author identifier"
                     >
                       {a.id}
                     </a>
@@ -307,18 +419,10 @@ const C2paDisplay = ({ file }) => {
     let agentName = null;
 
     // First, try to get the software agent from the 'created' action.
-    const softwareAgent = createdAction?.softwareAgent;
-    if (softwareAgent) {
-      // V2 actions use an object, V1 used a string.
-      if (typeof softwareAgent === 'string') {
-        agentName = softwareAgent;
-      } else if (softwareAgent.name) {
-        agentName = softwareAgent.name;
-      }
-    }
+    agentName = getSoftwareAgentName(createdAction?.softwareAgent);
     
     // If not found in actions, fall back to manifest-level information.
-    const activeM = manifest?.activeManifest;
+    const activeM = getActiveManifestObject(manifest);
     if (!agentName && activeM) {
       // The `claim_generator` is a string from our backend format.
       // The `claimGeneratorInfo` is an array of objects from the c2pa-js SDK.
@@ -376,6 +480,7 @@ const C2paDisplay = ({ file }) => {
     return (
       <div className="space-y-6">
         {renderCreativeWork(manifest)}
+        {renderProvenanceFlow(manifest)}
         {renderAuthorization(manifest)}
         {renderClaimGenerator(manifest)}
         {renderSourceType(manifest)}
@@ -385,7 +490,8 @@ const C2paDisplay = ({ file }) => {
 
   const formatSignatureInfo = (manifest) => {
     // The signature_info from the DB has a different key name than the one from the SDK
-    const signature = manifest?.activeManifest?.signature_info || manifest?.activeManifest?.signatureInfo;
+    const activeManifest = getActiveManifestObject(manifest);
+    const signature = activeManifest?.signature_info || activeManifest?.signatureInfo;
     if (!signature) return null;
     
     const issuer = signature.issuer || 'Unknown';

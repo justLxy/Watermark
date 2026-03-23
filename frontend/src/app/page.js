@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { API_BASE } from '../utils/api';
-import { FileUp, Camera, Wand2, ArrowRight } from 'lucide-react';
+import { FileUp, Camera, Wand2 } from 'lucide-react';
 
 // Dynamically import the C2paDisplay component to avoid SSR issues
 const C2paDisplay = dynamic(() => import('../components/C2paDisplay'), { 
@@ -123,14 +123,9 @@ export default function HomePage() {
   const [encodedFileUrl, setEncodedFileUrl] = useState(null);
   const [isEncoding, setIsEncoding] = useState(false);
   
-  // Authorization state
-  const [buyerDid, setBuyerDid] = useState('');
-  const [isAuthorizing, setIsAuthorizing] = useState(false);
-  
   // C2PA manifest metadata state
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
-  const [authorDid, setAuthorDid] = useState('');
   const [description, setDescription] = useState('');
   const [creativeWorkURL, setCreativeWorkURL] = useState('');
   const [trainingPolicy, setTrainingPolicy] = useState('notAllowed');
@@ -179,7 +174,6 @@ export default function HomePage() {
     formData.append('image', encodeFile);
     formData.append('title', title || encodeFile.name);
     formData.append('author', author);
-    formData.append('authorDID', authorDid);
     formData.append('creativeWorkURL', creativeWorkURL);
     formData.append('description', description);
     formData.append('trainingPolicy', trainingPolicy);
@@ -212,47 +206,6 @@ export default function HomePage() {
     }
   };
 
-  const handleAuthorize = async () => {
-    if (!encodedFile) {
-      setError('An encoded file must be present to authorize.');
-      return;
-    }
-    if (!buyerDid || !buyerDid.startsWith('did:')) {
-      setError('Please enter a valid DID for the buyer.');
-      return;
-    }
-    setIsAuthorizing(true);
-    setError('');
-
-    const formData = new FormData();
-    formData.append('image', encodedFile);
-    formData.append('buyerDID', buyerDid);
-
-    try {
-      const response = await fetch(`${API_BASE}/authorize`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const err_text = await response.text();
-        throw new Error(`Authorization error: ${response.status} - ${err_text}`);
-      }
-      
-      const imageBlob = await response.blob();
-      const newFile = new File([imageBlob], `authorized_${encodedFile.name}`, { type: imageBlob.type });
-
-      setEncodedFileUrl(URL.createObjectURL(imageBlob));
-      setEncodedFile(newFile);
-      setBuyerDid('');
-
-    } catch (err) {
-      setError(err.message || 'An unexpected error occurred during authorization.');
-    } finally {
-      setIsAuthorizing(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-800 dark:text-gray-200 font-sans">
       <div className="container mx-auto px-4 py-12">
@@ -282,7 +235,6 @@ export default function HomePage() {
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <InputField id="title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Sunset Over the Lake" />
                     <InputField id="author" label="Author Name" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="e.g., Jane Doe" />
-                    <InputField id="authorDid" label="Author DID (Optional)" value={authorDid} onChange={(e) => setAuthorDid(e.target.value)} placeholder="did:web:..." />
                     <InputField id="softwareAgent" label="Processing Software" value={softwareAgent} onChange={(e) => setSoftwareAgent(e.target.value)} placeholder="My-AI-App/1.0" />
                  </div>
                  <InputField id="description" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A brief description of the creative work." as="textarea"/>
@@ -311,23 +263,10 @@ export default function HomePage() {
             )}
             
             {encodedFileUrl && (
-              <>
-                <div className="p-4 text-center bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <h3 className="text-base font-semibold text-green-800 dark:text-green-200">Encoding Successful!</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">New image with credentials created. You can now issue an authorization.</p>
-                </div>
-                
-                <div className="pt-6 border-t border-gray-200 dark:border-gray-800 space-y-4">
-                  <p className="text-base font-semibold text-gray-700 dark:text-gray-300">Issue Authorization (License)</p>
-                  <InputField id="buyerDid" label="Buyer's DID" value={buyerDid} onChange={(e) => setBuyerDid(e.target.value)} placeholder="Enter the buyer's DID (e.g., did:key:z...)" />
-                  <div className="pt-2">
-                    <ActionButton onClick={handleAuthorize} disabled={isAuthorizing} className="bg-purple-600 hover:bg-purple-700 focus:ring-purple-500">
-                      {isAuthorizing ? 'Authorizing...' : 'Authorize and Re-sign'}
-                      {!isAuthorizing && <ArrowRight className="ml-2 w-5 h-5" />}
-                    </ActionButton>
-                  </div>
-                </div>
-              </>
+              <div className="p-4 text-center bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <h3 className="text-base font-semibold text-green-800 dark:text-green-200">Encoding Successful!</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">New image with Content Credentials created.</p>
+              </div>
             )}
           </Card>
 

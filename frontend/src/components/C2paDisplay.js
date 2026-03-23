@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createC2pa } from 'c2pa';
+import { createC2pa } from '@contentauth/c2pa-web/inline';
 import 'c2pa-wc/dist/components/Indicator';
+import { API_BASE } from '../utils/api';
 
 function getResolverUrl(didOrUrl) {
   if (!didOrUrl) return "#";
@@ -32,6 +33,14 @@ const getActiveManifestObject = (manifestStore) => {
   }
   if (typeof manifestStore.activeManifest === 'string' && manifestStore.manifests) {
     return manifestStore.manifests[manifestStore.activeManifest] || null;
+  }
+  if (typeof manifestStore.active_manifest === 'string' && manifestStore.manifests) {
+    return manifestStore.manifests[manifestStore.active_manifest] || null;
+  }
+  if (manifestStore.manifests && typeof manifestStore.manifests === 'object') {
+    return Object.values(manifestStore.manifests).find(
+      (manifest) => typeof manifest === 'object' && manifest !== null
+    ) || null;
   }
   return null;
 };
@@ -91,10 +100,7 @@ const C2paDisplay = ({ file }) => {
 
   // Effect to initialize the C2PA library once on component mount
   useEffect(() => {
-    createC2pa({
-      wasmSrc: '/c2pa/c2pa.wasm',
-      workerSrc: '/c2pa/c2pa.worker.js',
-    }).then(instance => {
+    createC2pa().then(instance => {
       setC2paInstance(instance);
     }).catch(err => {
         console.error("Failed to initialize C2PA library", err);
@@ -119,9 +125,14 @@ const C2paDisplay = ({ file }) => {
 
           // 1. Try to read embedded C2PA manifest
           try {
-            const result = await c2paInstance.read(fileBlob);
-            const store = result.manifestStore || result;
-            if (store && store.activeManifest) {
+            const reader = await c2paInstance.reader.fromBlob(
+              fileBlob.type || 'application/octet-stream',
+              fileBlob
+            );
+            const store = await reader.manifestStore();
+            await reader.free();
+
+            if (store && getActiveManifestObject(store)) {
               embeddedManifest = store;
             }
           } catch (c2paError) {

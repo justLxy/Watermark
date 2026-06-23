@@ -37,15 +37,12 @@ backend/
 
 ```python
 # backend/app.py
-import nest_asyncio
 from flask import Flask
 from flask_cors import CORS
 
 from api.routes import provenance_bp
 from core.config import MAX_CONTENT_LENGTH
 from repositories.provenance import init_db
-
-nest_asyncio.apply()
 
 
 def create_app():
@@ -228,10 +225,13 @@ TrustMark 的存在通过标准 `c2pa.soft-binding` assertion 表达，actions �
 | --- | --- | --- |
 | `image` | `encode_image_asset()` | 主上传图片，既是水印写入对象，也是默认 `parentOf` ingredient 来源 |
 | `ingredientImage[]` | `encode_image_asset()` | 额外素材图，通常作为 `inputTo` 或 `componentOf` |
-| `title` | `build_manifest()` | manifest 标题、CreativeWork 名称 |
-| `author` | `build_manifest()` | CreativeWork 作者、IPTC creator |
-| `description` | `build_manifest()` | CreativeWork 描述、IPTC 描述 |
-| `creativeWorkURL` | `build_manifest()` | schema.org `url` |
+| `title` | `build_manifest()` | manifest 标题、`c2pa.metadata` 与 CreativeWork 名称 |
+| `author` | `build_manifest()` | `com.articulator.metadata` 中的 CreativeWork 作者 |
+| `description` | `build_manifest()` | `com.articulator.metadata` 中的 CreativeWork 描述 |
+| `assetDID` | `build_manifest()` | Raw W3C DID，写入两个 metadata assertions |
+| `assetShortURL` | `build_manifest()` | DID short URL，统一规范化为 HTTPS |
+| `canonicalURL` | `build_manifest()` | Articulator canonical URL |
+| `maxDimension` | `encode_image_asset()` | 在 TrustMark/C2PA 签名前限制最终公开尺寸 |
 | `artworkMetadata` | `build_manifest()` | 写入 `com.articulator.artwork-metadata` |
 | `derivedFrom` | `encode_image_asset()` / `build_manifest()` | 派生来源说明，写入 `com.articulator.derivation` |
 | `trainingPolicy` | `build_manifest()` | 写入 `cawg.training-mining` |
@@ -242,6 +242,12 @@ TrustMark 的存在通过标准 `c2pa.soft-binding` assertion 表达，actions �
 | `ingredientRelationship` | `encode_image_asset()` | 控制额外 ingredient 属于 `inputTo` 或 `componentOf` |
 
 其中 `derivedFrom` 和 `artworkMetadata` 都要求前端传 JSON 字符串，后端会先 `json.loads(...)` 再嵌入 assertion。
+
+新 active manifest 严格使用 C2PA 2.4 的 `c2pa.metadata` 和
+`com.articulator.metadata`，不再生成 deprecated 的
+`stds.schema-org.CreativeWork` 或 `stds.iptc`。`POST /add-asset-identity`
+用于在不修改像素的前提下追加 UPDATE manifest，补齐 DID、short URL 和
+canonical URL。
 
 ### 4.6 把 manifest 落库
 

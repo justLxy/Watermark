@@ -369,6 +369,76 @@ const C2paDisplay = ({ file }) => {
   };
   
   const renderCreativeWork = (manifest) => {
+    const metadataAssertion = findAssertion('c2pa.metadata', manifest);
+    const metadata = metadataAssertion?.data || {};
+    const identifiers = Array.isArray(metadata['dc:identifier'])
+      ? metadata['dc:identifier']
+      : metadata['dc:identifier']
+        ? [metadata['dc:identifier']]
+        : [];
+    const rawDid = identifiers.find((value) => typeof value === 'string' && value.startsWith('did:'));
+    const shortUrl = identifiers.find(
+      (value) => typeof value === 'string' && /^https?:\/\/did\.art\//i.test(value)
+    );
+    const canonicalUrl = metadata['dc:relation'];
+
+    const articulatorAssertion = findAssertion('com.articulator.metadata', manifest);
+    const articulatorData = articulatorAssertion?.data;
+    if (articulatorData) {
+      const authorData = articulatorData['schema:author'];
+      const authorName = authorData?.['schema:name'];
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+            <h4 className="text-sm font-semibold text-slate-800 tracking-wide">CREATIVE WORK</h4>
+          </div>
+          <div className="space-y-2 ml-4">
+            {articulatorData['schema:name'] && (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-500 uppercase tracking-wider">Title</span>
+                <span className="text-sm text-slate-700 font-medium">{articulatorData['schema:name']}</span>
+              </div>
+            )}
+            {authorName && (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-500 uppercase tracking-wider">Author</span>
+                <span className="text-sm text-slate-700 font-medium">{authorName}</span>
+              </div>
+            )}
+            {articulatorData['schema:description'] && (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-500 uppercase tracking-wider">Description</span>
+                <span className="text-sm text-slate-700">{articulatorData['schema:description']}</span>
+              </div>
+            )}
+            {rawDid && (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-500 uppercase tracking-wider">Raw W3C DID</span>
+                <span className="text-sm text-slate-700 font-mono break-all">{rawDid}</span>
+              </div>
+            )}
+            {(shortUrl || articulatorData['schema:url']) && (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-500 uppercase tracking-wider">DID Short URL</span>
+                <a href={shortUrl || articulatorData['schema:url']} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 break-all">
+                  {shortUrl || articulatorData['schema:url']}
+                </a>
+              </div>
+            )}
+            {(canonicalUrl || articulatorData['schema:sameAs']) && (
+              <div className="flex flex-col">
+                <span className="text-xs text-slate-500 uppercase tracking-wider">Canonical URL</span>
+                <a href={canonicalUrl || articulatorData['schema:sameAs']} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:text-blue-700 break-all">
+                  {canonicalUrl || articulatorData['schema:sameAs']}
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     const creativeWorkAssertion = findAssertion('stds.schema-org.CreativeWork', manifest);
     if (!creativeWorkAssertion) return null;
     const { author, name, description, url } = creativeWorkAssertion.data;
@@ -655,4 +725,4 @@ const C2paDisplay = ({ file }) => {
   return null;
 };
 
-export default C2paDisplay; 
+export default C2paDisplay;

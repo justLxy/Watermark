@@ -1,13 +1,9 @@
-import nest_asyncio
 from flask import Flask
 from flask_cors import CORS
 
 from api.routes import provenance_bp
 from core.config import MAX_CONTENT_LENGTH
 from repositories.provenance import init_db
-
-
-nest_asyncio.apply()
 
 
 def create_app():

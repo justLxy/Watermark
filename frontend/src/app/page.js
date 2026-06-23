@@ -127,7 +127,9 @@ export default function HomePage() {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [description, setDescription] = useState('');
-  const [creativeWorkURL, setCreativeWorkURL] = useState('');
+  const [assetDID, setAssetDID] = useState('');
+  const [assetShortURL, setAssetShortURL] = useState('');
+  const [canonicalURL, setCanonicalURL] = useState('');
   const [trainingPolicy, setTrainingPolicy] = useState('notAllowed');
   const [digitalSourceType, setDigitalSourceType] = useState('http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture');
   const [softwareAgent, setSoftwareAgent] = useState('TrustMark Demo');
@@ -174,7 +176,9 @@ export default function HomePage() {
     formData.append('image', encodeFile);
     formData.append('title', title || encodeFile.name);
     formData.append('author', author);
-    formData.append('creativeWorkURL', creativeWorkURL);
+    formData.append('assetDID', assetDID);
+    formData.append('assetShortURL', assetShortURL);
+    formData.append('canonicalURL', canonicalURL);
     formData.append('description', description);
     formData.append('trainingPolicy', trainingPolicy);
     formData.append('digitalSourceType', digitalSourceType);
@@ -238,7 +242,9 @@ export default function HomePage() {
                     <InputField id="softwareAgent" label="Processing Software" value={softwareAgent} onChange={(e) => setSoftwareAgent(e.target.value)} placeholder="My-AI-App/1.0" />
                  </div>
                  <InputField id="description" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A brief description of the creative work." as="textarea"/>
-                 <InputField id="creativeWorkURL" label="Creative Work URL" type="url" value={creativeWorkURL} onChange={(e) => setCreativeWorkURL(e.target.value)} placeholder="https://example.com/artwork/123" />
+	                 <InputField id="assetDID" label="Raw W3C DID" value={assetDID} onChange={(e) => setAssetDID(e.target.value)} placeholder="did:art:hkust:..." />
+	                 <InputField id="assetShortURL" label="DID Short URL" value={assetShortURL} onChange={(e) => setAssetShortURL(e.target.value)} placeholder="did.art/hkust/12345678.abc123" />
+	                 <InputField id="canonicalURL" label="Canonical URL" type="url" value={canonicalURL} onChange={(e) => setCanonicalURL(e.target.value)} placeholder="https://example.com/artwork/123" />
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <SelectField id="digitalSourceType" label="Digital Source Type" value={digitalSourceType} onChange={(e) => setDigitalSourceType(e.target.value)}>

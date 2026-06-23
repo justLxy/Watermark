@@ -704,7 +704,10 @@ const C2paDisplay = ({ file }) => {
                 </div>
                     {/* Content */}
                     <div className="p-4 space-y-3 text-sm">
-                        <p className="text-slate-600">No registered Content Credentials found.</p>
+                        <div className="space-y-1">
+                          <p className="text-slate-800 font-medium">TrustMark watermark detected.</p>
+                          <p className="text-slate-600">No registered Content Credentials found.</p>
+                        </div>
                         <div className="flex flex-col pt-2">
                           <span className="text-xs text-slate-500 uppercase tracking-wider">Watermark ID</span>
                           <span className="text-slate-700 font-mono break-all text-xs">{decodedWatermark.secret}</span>

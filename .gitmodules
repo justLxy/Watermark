@@ -1,0 +1,3 @@
+[submodule "videoseal"]
+	path = videoseal
+	url = https://github.com/justLxy/videoseal.git

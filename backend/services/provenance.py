@@ -391,56 +391,6 @@ def encode_image_asset(file_storage, form_data, ingredient_files=None):
         cleanup_paths(cleanup_targets)
 
 
-def sign_image_asset(file_storage, form_data, ingredient_files=None):
-    """C2PA-only signing: embed a manifest into the supplied image WITHOUT a
-    PixelSeal watermark and WITHOUT resizing. Used for the public display image,
-    which carries a visible seal but no invisible mark. The bytes are signed
-    as-is, so the caller must send the final display pixels."""
-    cleanup_targets = []
-    try:
-        original_filename = file_storage.filename
-        if not original_filename:
-            raise ValueError("No selected file")
-
-        base_filename = _random_basename()
-        file_ext = os.path.splitext(original_filename)[1] or '.png'
-        input_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_signsrc{file_ext}")
-        file_storage.save(input_path)
-        cleanup_targets.append(input_path)
-
-        ingredient_definitions = []
-        ingredient_relationship = normalize_ingredient_relationship(
-            form_data.get('ingredientRelationship'), default='inputTo',
-        )
-        for index, ingredient_file in enumerate(list(ingredient_files or [])):
-            if not ingredient_file or ingredient_file.filename == '':
-                continue
-            ingredient_ext = os.path.splitext(ingredient_file.filename)[1] or '.png'
-            ingredient_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_ingredient_{index}{ingredient_ext}")
-            ingredient_file.save(ingredient_path)
-            cleanup_targets.append(ingredient_path)
-            ingredient_definitions.append(
-                build_ingredient_definition(
-                    ingredient_path,
-                    title=ingredient_file.filename or f"Ingredient {index + 1}",
-                    relationship=ingredient_relationship,
-                )
-            )
-
-        # watermark_id=None -> build_manifest omits the soft-binding assertion.
-        manifest = build_manifest(None, input_path, form_data, ingredient_definitions)
-
-        out_ext = file_ext if file_ext.lower() in ('.png', '.jpg', '.jpeg') else '.png'
-        signed_output_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_signed{out_ext}")
-        cleanup_targets.append(signed_output_path)
-        sign_asset_with_manifest(manifest, input_path, signed_output_path, ingredient_definitions)
-
-        with open(signed_output_path, 'rb') as output_file:
-            return io.BytesIO(output_file.read()), guess_asset_format(signed_output_path)
-    finally:
-        cleanup_paths(cleanup_targets)
-
-
 def _extract_owner_data(form_data):
     return {
         'buyerName': (form_data.get('buyerName') or '').strip() or None,

@@ -54,6 +54,52 @@ def get_manifest_record(watermark_id):
         return cursor.fetchone()
 
 
+def _hamming_distance(a, b):
+    """Number of differing positions between two equal-length bit strings.
+    Returns ``None`` when lengths differ (not comparable)."""
+    if len(a) != len(b):
+        return None
+    return sum(c1 != c2 for c1, c2 in zip(a, b))
+
+
+def get_manifest_record_nearest(watermark_id, max_distance):
+    """Find the stored record whose id is closest to ``watermark_id`` by Hamming
+    distance, tolerating up to ``max_distance`` flipped bits.
+
+    PixelSeal has no error correction, so a decoded id may differ from the
+    embedded one by a few bits after JPEG/resize. An exact PRIMARY KEY match is
+    tried first (fast path); if that misses, we scan candidate ids of the same
+    length and return the closest within threshold. Returns ``(row, distance)``
+    or ``(None, None)`` when nothing qualifies. Ties resolve to the first match.
+    """
+    exact = get_manifest_record(watermark_id)
+    if exact is not None:
+        return exact, 0
+
+    best_row = None
+    best_id = None
+    best_distance = None
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT watermark_id, manifest_json, verifiable_credential, vc_issued_at FROM provenance"
+        )
+        for row in cursor.fetchall():
+            distance = _hamming_distance(watermark_id, row['watermark_id'])
+            if distance is None or distance > max_distance:
+                continue
+            if best_distance is None or distance < best_distance:
+                best_row, best_id, best_distance = row, row['watermark_id'], distance
+                if best_distance == 0:
+                    break
+
+    if best_row is None:
+        return None, None
+
+    # Re-fetch by the matched id so the returned row shape matches get_manifest_record.
+    return get_manifest_record(best_id), best_distance
+
+
 def _decode_metadata_payload(data):
     if isinstance(data, dict) and data.get('encoding') == 'gzip+base64' and isinstance(data.get('data'), str):
         raw = gzip.decompress(base64.b64decode(data['data']))

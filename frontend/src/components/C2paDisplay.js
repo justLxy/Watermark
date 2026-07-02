@@ -178,7 +178,7 @@ const C2paDisplay = ({ file }) => {
                         reconstructedManifest.assertions = [];
                     }
                     reconstructedManifest.assertions.push({
-                      label: 'com.trustmark.authorization',
+                      label: 'com.pixelseal.authorization',
                       data: lookedUpData.verifiable_credential,
                     });
                   }
@@ -318,7 +318,7 @@ const C2paDisplay = ({ file }) => {
   };
 
   const renderAuthorization = (manifest) => {
-    const authAssertion = findAssertion('com.trustmark.authorization', manifest);
+    const authAssertion = findAssertion('com.pixelseal.authorization', manifest);
     if (!authAssertion) return null;
 
     const vc = authAssertion.data;
@@ -681,9 +681,9 @@ const C2paDisplay = ({ file }) => {
           className="group cursor-pointer transition-all duration-300 hover:scale-110"
           onClick={() => setShowPanel(prev => !prev)}
         >
-          {/* Custom TrustMark icon */}
+          {/* Custom PixelSeal icon */}
           <div className="w-8 h-8 flex items-center justify-center bg-blue-600 text-white rounded-full text-sm font-bold shadow-lg">
-              TM
+              PS
           </div>
         </div>
         
@@ -692,7 +692,7 @@ const C2paDisplay = ({ file }) => {
                 <div className="backdrop-blur-xl bg-white/95 border border-white/30 rounded-2xl shadow-2xl overflow-hidden">
                     {/* Simplified Header */}
                     <div className="flex justify-between items-center p-4 border-b border-slate-200/50">
-                      <h3 className="font-bold text-slate-800">TrustMark Watermark</h3>
+                      <h3 className="font-bold text-slate-800">PixelSeal Watermark</h3>
                        <button 
                         onClick={() => setShowPanel(false)} 
                         className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100/80 hover:bg-slate-200/80 transition-colors duration-200 group"
@@ -705,7 +705,7 @@ const C2paDisplay = ({ file }) => {
                     {/* Content */}
                     <div className="p-4 space-y-3 text-sm">
                         <div className="space-y-1">
-                          <p className="text-slate-800 font-medium">TrustMark watermark detected.</p>
+                          <p className="text-slate-800 font-medium">PixelSeal watermark detected.</p>
                           <p className="text-slate-600">No registered Content Credentials found.</p>
                         </div>
                         <div className="flex flex-col pt-2">

@@ -12,7 +12,7 @@ from PIL import Image
 from c2pa import Reader
 
 from core.config import OUTPUT_FOLDER, UPLOAD_FOLDER
-from repositories.provenance import append_ownership_to_manifest_record, get_manifest_record, save_manifest
+from repositories.provenance import append_ownership_to_manifest_record, get_manifest_record, get_manifest_record_nearest, save_manifest
 from services.c2pa import (
     apply_ownership_to_assertions,
     build_ingredient_definition,
@@ -25,8 +25,15 @@ from services.c2pa import (
     sign_asset_with_manifest,
     sign_ownership_update,
 )
-from services.trustmark import generate_watermark_id, get_trustmark
+from services.pixelseal import generate_watermark_id, encode as pixelseal_encode, decode as pixelseal_decode
 from utils.files import cleanup_paths, cleanup_temp_path, guess_asset_format, normalize_ingredient_relationship
+
+
+# Max Hamming distance (in bits) tolerated when matching a decoded 256-bit
+# PixelSeal id against stored ids. PixelSeal has no error correction, so a few
+# bits may flip after compression/resize; random 256-bit ids are astronomically
+# far apart, so a generous threshold recovers the true id without collisions.
+WATERMARK_LOOKUP_MAX_DISTANCE = 32
 
 
 def _random_basename():
@@ -272,7 +279,6 @@ def verify_image_asset(file_storage):
 
 def encode_image_asset(file_storage, form_data, ingredient_files=None):
     cleanup_targets = []
-    trustmark = get_trustmark()
 
     try:
         original_filename = file_storage.filename
@@ -298,7 +304,7 @@ def encode_image_asset(file_storage, form_data, ingredient_files=None):
                 if max(rgb.width, rgb.height) > max_dimension:
                     rgb.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
                     print(f"Resized signing source to final public size: {rgb.width}x{rgb.height}")
-            encoded_image = trustmark.encode(rgb, watermark_id, MODE='binary', WM_STRENGTH=1.5)
+            encoded_image = pixelseal_encode(rgb, watermark_id)
 
             watermarked_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_watermarked.png")
             encoded_image.save(watermarked_path)
@@ -496,7 +502,7 @@ def append_asset_identity_to_asset(file_storage, form_data):
 
 
 def lookup_manifest_by_watermark(watermark_id):
-    row = get_manifest_record(watermark_id)
+    row, _distance = get_manifest_record_nearest(watermark_id, WATERMARK_LOOKUP_MAX_DISTANCE)
     if not row:
         return None
 
@@ -509,7 +515,6 @@ def lookup_manifest_by_watermark(watermark_id):
 
 def decode_image_asset(file_storage):
     input_path = None
-    trustmark = get_trustmark()
 
     try:
         base_filename = _random_basename()
@@ -519,7 +524,7 @@ def decode_image_asset(file_storage):
 
         try:
             stego_image = Image.open(input_path).convert('RGB')
-            wm_secret, wm_present, wm_schema = trustmark.decode(stego_image, MODE='binary')
+            wm_secret, wm_present, wm_schema = pixelseal_decode(stego_image)
             return {
                 'watermark': {
                     'present': wm_present,

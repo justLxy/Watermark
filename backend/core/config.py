@@ -11,7 +11,6 @@ OUTPUT_FOLDER = os.path.join(BACKEND_DIR, 'outputs')
 DATABASE = os.path.join(BACKEND_DIR, 'provenance.db')
 
 MAX_CONTENT_LENGTH = 100 * 1024 * 1024 * 1024
-TRUSTMARK_MODE = 'Q'
 
 C2PA_KEYS_DIR = os.path.join(PROJECT_DIR, 'c2pa', 'keys')
 

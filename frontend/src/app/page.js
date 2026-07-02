@@ -132,7 +132,7 @@ export default function HomePage() {
   const [canonicalURL, setCanonicalURL] = useState('');
   const [trainingPolicy, setTrainingPolicy] = useState('notAllowed');
   const [digitalSourceType, setDigitalSourceType] = useState('http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture');
-  const [softwareAgent, setSoftwareAgent] = useState('TrustMark Demo');
+  const [softwareAgent, setSoftwareAgent] = useState('PixelSeal Demo');
 
   // Decode & Verify state
   const [decodeFile, setDecodeFile] = useState(null);

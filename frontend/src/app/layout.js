@@ -12,8 +12,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "TrustMark Watermark System",
-  description: "Upload and analyze images with TrustMark watermarks and C2PA provenance data",
+  title: "PixelSeal Watermark System",
+  description: "Upload and analyze images with PixelSeal watermarks and C2PA provenance data",
 };
 
 export default function RootLayout({ children }) {

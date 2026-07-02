@@ -9,7 +9,7 @@ import uuid
 from c2pa import Builder, C2paBuilderIntent, C2paSignerInfo, Reader, Signer
 
 from core.config import C2PA_KEYS_DIR
-from services.trustmark import get_trustmark_mode, get_trustmark_schema_code
+from services.pixelseal import get_soft_binding_alg, PIXELSEAL_NBITS
 from utils.files import guess_asset_format
 
 
@@ -203,9 +203,7 @@ def build_manifest(watermark_id, ingredient_path, form_data, ingredient_definiti
     }
 
     assertions = []
-    mode = get_trustmark_mode()
-    schema_code = get_trustmark_schema_code()
-    assertions.append(build_softbinding(f'com.adobe.trustmark.{mode}', f"{schema_code}*{watermark_id}"))
+    assertions.append(build_softbinding(get_soft_binding_alg(), f"{PIXELSEAL_NBITS}*{watermark_id}"))
 
     assertions.extend(build_asset_identity_assertions(form_data))
 
@@ -356,9 +354,9 @@ def read_active_manifest(signed_path):
 
 
 def parse_softbinding_watermark_id(assertions):
-    """Extract the TrustMark watermark id from a carried soft-binding assertion.
+    """Extract the PixelSeal watermark id from a carried soft-binding assertion.
 
-    Soft-binding values are stored as ``{schema_code}*{watermark_id}``; we return
+    Soft-binding values are stored as ``{nbits}*{watermark_id}``; we return
     just the watermark id portion so the durable manifest record can be updated.
     """
     for assertion in assertions or []:

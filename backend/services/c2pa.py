@@ -203,7 +203,10 @@ def build_manifest(watermark_id, ingredient_path, form_data, ingredient_definiti
     }
 
     assertions = []
-    assertions.append(build_softbinding(get_soft_binding_alg(), f"{PIXELSEAL_NBITS}*{watermark_id}"))
+    # A C2PA-only asset (e.g. the public display image) carries no PixelSeal
+    # watermark, so there is nothing to soft-bind to; skip the assertion.
+    if watermark_id:
+        assertions.append(build_softbinding(get_soft_binding_alg(), f"{PIXELSEAL_NBITS}*{watermark_id}"))
 
     assertions.extend(build_asset_identity_assertions(form_data))
 

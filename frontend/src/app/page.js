@@ -243,7 +243,7 @@ export default function HomePage() {
                  </div>
                  <InputField id="description" label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A brief description of the creative work." as="textarea"/>
 	                 <InputField id="assetDID" label="Raw W3C DID" value={assetDID} onChange={(e) => setAssetDID(e.target.value)} placeholder="did:art:hkust:..." />
-	                 <InputField id="assetShortURL" label="DID Short URL" value={assetShortURL} onChange={(e) => setAssetShortURL(e.target.value)} placeholder="did.art/hkust/12345678.abc123" />
+	                 <InputField id="assetShortURL" label="DID Short URL (embedded as watermark, ≤32 chars)" value={assetShortURL} onChange={(e) => setAssetShortURL(e.target.value)} placeholder="did.art/hkust/12345678.abc123 — leave blank to auto-generate" />
 	                 <InputField id="canonicalURL" label="Canonical URL" type="url" value={canonicalURL} onChange={(e) => setCanonicalURL(e.target.value)} placeholder="https://example.com/artwork/123" />
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -12,7 +12,7 @@ from PIL import Image
 from c2pa import Reader
 
 from core.config import OUTPUT_FOLDER, UPLOAD_FOLDER
-from repositories.provenance import append_ownership_to_manifest_record, get_manifest_record, get_manifest_record_nearest, save_manifest
+from repositories.provenance import append_ownership_to_manifest_record, get_manifest_record_nearest, save_manifest
 from services.c2pa import (
     apply_ownership_to_assertions,
     build_ingredient_definition,
@@ -25,15 +25,24 @@ from services.c2pa import (
     sign_asset_with_manifest,
     sign_ownership_update,
 )
-from services.pixelseal import generate_watermark_id, encode as pixelseal_encode, decode as pixelseal_decode
+from services.pixelseal import (
+    generate_watermark_id,
+    url_to_watermark_id,
+    watermark_id_to_url,
+    encode as pixelseal_encode,
+    decode as pixelseal_decode,
+)
 from utils.files import cleanup_paths, cleanup_temp_path, guess_asset_format, normalize_ingredient_relationship
 
 
 # Max Hamming distance (in bits) tolerated when matching a decoded 256-bit
 # PixelSeal id against stored ids. PixelSeal has no error correction, so a few
-# bits may flip after compression/resize; random 256-bit ids are astronomically
-# far apart, so a generous threshold recovers the true id without collisions.
-WATERMARK_LOOKUP_MAX_DISTANCE = 32
+# bits may flip after compression/resize (observed: 0 on clean/JPEG-60, ~3 on
+# JPEG-40). DID payloads share a fixed ``host/org/`` prefix, so distinct ids
+# differ only in the random token region — a threshold well above the observed
+# error rate yet far below the inter-token distance recovers the true id without
+# collisions.
+WATERMARK_LOOKUP_MAX_DISTANCE = 20
 
 
 def _random_basename():
@@ -296,7 +305,16 @@ def encode_image_asset(file_storage, form_data, ingredient_files=None):
             original_width, original_height = cover.width, cover.height
             print(f"Processing image at original size: {original_width}x{original_height}")
 
-            watermark_id = generate_watermark_id()
+            # The watermark carries the asset's DID short URL when the caller
+            # provides one (the "DID Short URL" field, e.g. did.art/hkust/<token>);
+            # otherwise we mint a fresh DID. url_to_watermark_id raises ValueError
+            # if the URL exceeds PixelSeal's 32-byte budget, surfaced as a 400.
+            short_url = (form_data.get('assetShortURL') or '').strip()
+            if short_url:
+                watermark_id = url_to_watermark_id(short_url)
+            else:
+                watermark_id = generate_watermark_id()
+            print(f"Watermark DID URL: {watermark_id_to_url(watermark_id)}")
             rgb = cover.convert('RGB')
             max_dimension_raw = (form_data.get('maxDimension') or '').strip()
             if max_dimension_raw:
@@ -502,7 +520,7 @@ def append_asset_identity_to_asset(file_storage, form_data):
 
 
 def lookup_manifest_by_watermark(watermark_id):
-    row, _distance = get_manifest_record_nearest(watermark_id, WATERMARK_LOOKUP_MAX_DISTANCE)
+    row, _ = get_manifest_record_nearest(watermark_id, WATERMARK_LOOKUP_MAX_DISTANCE)
     if not row:
         return None
 
@@ -510,6 +528,7 @@ def lookup_manifest_by_watermark(watermark_id):
         "manifest": json.loads(row['manifest_json']),
         "verifiable_credential": json.loads(row['verifiable_credential']) if row['verifiable_credential'] else None,
         "vc_issued_at": row['vc_issued_at'],
+        "watermark_url": watermark_id_to_url(row['watermark_id']),
     }
 
 
@@ -530,6 +549,7 @@ def decode_image_asset(file_storage):
                     'present': wm_present,
                     'secret': wm_secret,
                     'schema': wm_schema,
+                    'url': watermark_id_to_url(wm_secret) if wm_present else None,
                 }
             }
         except Exception as exc:

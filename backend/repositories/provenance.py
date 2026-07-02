@@ -48,7 +48,7 @@ def get_manifest_record(watermark_id):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT manifest_json, verifiable_credential, vc_issued_at FROM provenance WHERE watermark_id = ?",
+            "SELECT watermark_id, manifest_json, verifiable_credential, vc_issued_at FROM provenance WHERE watermark_id = ?",
             (watermark_id,),
         )
         return cursor.fetchone()

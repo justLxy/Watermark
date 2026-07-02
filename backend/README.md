@@ -16,7 +16,7 @@ backend/
 ├── services/
 │   ├── provenance.py           # encode / decode / lookup 业务编排
 │   ├── c2pa.py                 # C2PA manifest 构建与签名
-│   └── trustmark.py            # TrustMark 初始化与 watermark ID 生成
+│   └── pixelseal.py            # PixelSeal 初始化与 watermark DID URL 生成
 └── utils/
     └── files.py                # 文件清理、MIME 等工具
 ```
@@ -25,7 +25,7 @@ backend/
 
 - `app.py`：创建 Flask app，注册蓝图
 - `api/routes.py`：只处理请求校验、调用 service、返回响应
-- `services/provenance.py`：把 TrustMark、C2PA、文件系统、仓储串起来
+- `services/provenance.py`：把 PixelSeal、C2PA、文件系统、仓储串起来
 - `services/c2pa.py`：负责生成 manifest 和签名图片
 - `repositories/provenance.py`：负责 SQLite
 - `core/config.py`：统一放路径和配置
@@ -63,7 +63,7 @@ def create_app():
 flowchart TD
     Client[ClientUpload] --> RouteEncode["api/routes.py:/encode"]
     RouteEncode --> ServiceEncode["services/provenance.py:encode_image_asset"]
-    ServiceEncode --> TrustMarkEncode["services/trustmark.py"]
+    ServiceEncode --> PixelSealEncode["services/pixelseal.py"]
     ServiceEncode --> ManifestBuild["services/c2pa.py:build_manifest"]
     ServiceEncode --> RepoSave["repositories/provenance.py:save_manifest"]
     ServiceEncode --> C2paSign["services/c2pa.py:sign_asset_with_manifest"]
@@ -77,7 +77,7 @@ flowchart TD
 flowchart TD
     Client[ClientUpload] --> RouteDecode["api/routes.py:/decode"]
     RouteDecode --> ServiceDecode["services/provenance.py:decode_image_asset"]
-    ServiceDecode --> TrustMarkDecode["services/trustmark.py"]
+    ServiceDecode --> PixelSealDecode["services/pixelseal.py"]
     ServiceDecode --> JsonResponse[DecodeJsonResponse]
     JsonResponse --> Client
 ```
@@ -109,7 +109,7 @@ def encode_image():
 
 ### 4.2 保存原图，生成带水印图
 
-`encode_image_asset()` 先把上传的图存到 `backend/uploads/`，然后调用 TrustMark 对图片像素做不可见水印编码：
+`encode_image_asset()` 先把上传的图存到 `backend/uploads/`，然后调用 PixelSeal 对图片像素做不可见水印编码：
 
 ```python
 # backend/services/provenance.py
@@ -117,9 +117,11 @@ input_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_original{file_ext}")
 file_storage.save(input_path)
 
 with Image.open(input_path) as cover:
-    watermark_id = generate_watermark_id()
+    # 水印载荷是资产的 DID short URL（assetShortURL），没有则自动生成一个
+    short_url = (form_data.get('assetShortURL') or '').strip()
+    watermark_id = url_to_watermark_id(short_url) if short_url else generate_watermark_id()
     rgb = cover.convert('RGB')
-    encoded_image = trustmark.encode(rgb, watermark_id, MODE='binary', WM_STRENGTH=1.5)
+    encoded_image = encode(rgb, watermark_id)   # services.pixelseal
 
     watermarked_path = os.path.join(OUTPUT_FOLDER, f"{base_filename}_watermarked.png")
     encoded_image.save(watermarked_path)
@@ -127,15 +129,15 @@ with Image.open(input_path) as cover:
 
 这里涉及两个关键点：
 
-- `generate_watermark_id()` 会根据 TrustMark 当前 schema 容量生成一串二进制 watermark ID
-- 真正的水印编码发生在 `trustmark.encode(...)`
+- 载荷不再是随机数字，而是一个可解析的 **DID URL**（如 `https://did.art/hkust/70897657.2Mp8SM`）。`https://` scheme 不写入像素以节省字节，解码时再补回；host+path 编码进 PixelSeal 的 256-bit（32-byte）载荷。`generate_watermark_id()` 生成 `{host}/{org}/{token}` 形态的 DID，`url_to_watermark_id()` 则把调用方提供的 URL 编码成同一个 256-bit id（超过 32 字节会抛 `ValueError`，最终返回 400）。
+- 真正的水印编码发生在 `encode(...)`（PixelSeal 用训练好的 JND 注意力控制强度，因此没有 TrustMark 那样的 `WM_STRENGTH` 运行时参数）
 
-TrustMark 是在 `services/trustmark.py` 里初始化成单例的：
+PixelSeal 是在 `services/pixelseal.py` 里以懒加载单例形式初始化的：
 
 ```python
-# backend/services/trustmark.py
-TM_SCHEMA_CODE = TrustMark.Encoding.BCH_4
-TRUSTMARK = TrustMark(verbose=True, model_type=TRUSTMARK_MODE, encoding_type=TM_SCHEMA_CODE)
+# backend/services/pixelseal.py
+import videoseal  # 来自 videoseal git 子模块
+MODEL = videoseal.load("pixelseal")   # 首次调用时加载，checkpoint 自动下载到 videoseal/ckpts/
 ```
 
 ### 4.3 构建 ingredient 列表
@@ -213,7 +215,7 @@ actions.append({
 - `inputTo` ingredient 通过 `c2pa.created.parameters.ingredientIds` 关联
 
 当前实现不再额外写入 `c2pa.watermarked` 之类的非标准动作。  
-TrustMark 的存在通过标准 `c2pa.soft-binding` assertion 表达，actions 只保留官方标准动作。
+PixelSeal 的存在通过标准 `c2pa.soft-binding` assertion 表达（算法标签 `com.meta.pixelseal`，值形如 `256*{watermark_id}`），actions 只保留官方标准动作。
 
 也就是说，对于 derivative 任务，原始参考图不会显示成“placed 进去的素材”，而是显示成“AI 计算输入”。
 
@@ -229,9 +231,9 @@ TrustMark 的存在通过标准 `c2pa.soft-binding` assertion 表达，actions �
 | `author` | `build_manifest()` | `com.articulator.metadata` 中的 CreativeWork 作者 |
 | `description` | `build_manifest()` | `com.articulator.metadata` 中的 CreativeWork 描述 |
 | `assetDID` | `build_manifest()` | Raw W3C DID，写入两个 metadata assertions |
-| `assetShortURL` | `build_manifest()` | DID short URL，统一规范化为 HTTPS |
+| `assetShortURL` | `build_manifest()` / `encode_image_asset()` | DID short URL，统一规范化为 HTTPS；**同时作为写入像素的 PixelSeal 水印载荷**（≤32 字节，留空则自动生成） |
 | `canonicalURL` | `build_manifest()` | Articulator canonical URL |
-| `maxDimension` | `encode_image_asset()` | 在 TrustMark/C2PA 签名前限制最终公开尺寸 |
+| `maxDimension` | `encode_image_asset()` | 在 PixelSeal/C2PA 签名前限制最终公开尺寸 |
 | `artworkMetadata` | `build_manifest()` | 写入 `com.articulator.artwork-metadata` |
 | `derivedFrom` | `encode_image_asset()` / `build_manifest()` | 派生来源说明，写入 `com.articulator.derivation` |
 | `trainingPolicy` | `build_manifest()` | 写入 `cawg.training-mining` |
@@ -294,7 +296,7 @@ builder.sign(signer, guess_asset_format(source_path), source_stream, destination
 
 `/decode` 的目标现在只有一个：
 
-- 图片像素中的 TrustMark watermark
+- 图片像素中的 PixelSeal watermark（解码得到 DID URL）
 
 ### 5.1 先把上传文件保存到临时路径
 
@@ -303,22 +305,25 @@ input_path = os.path.join(UPLOAD_FOLDER, f"{base_filename}_decode{file_ext}")
 file_storage.save(input_path)
 ```
 
-### 5.2 用 TrustMark 解码像素水印
+### 5.2 用 PixelSeal 解码像素水印
 
 `/decode` 不再负责解析文件中嵌入的 C2PA manifest。  
 嵌入式 C2PA 的读取由前端 `c2pa` WebAssembly 库完成；后端 decode 只负责水印提取。
 
 ```python
 stego_image = Image.open(input_path).convert('RGB')
-wm_secret, wm_present, wm_schema = trustmark.decode(stego_image, MODE='binary')
+wm_secret, wm_present, wm_schema = decode(stego_image)   # services.pixelseal
 return {
     'watermark': {
         'present': wm_present,
-        'secret': wm_secret,
-        'schema': wm_schema,
+        'secret': wm_secret,                              # 256-bit id 字符串
+        'schema': wm_schema,                              # 256 (nbits)
+        'url': watermark_id_to_url(wm_secret) if wm_present else None,
     }
 }
 ```
+
+其中 `present` 由消息置信度（bit-logit 绝对值均值 ≥ 1.5）判定，而不是 PixelSeal 那个恒接近 0、被官方标注为“未使用”的 detection bit。
 
 ### 5.3 返回统一 JSON
 
@@ -329,12 +334,13 @@ return {
   "watermark": {
     "present": true,
     "secret": "1010...",
-    "schema": 2
+    "schema": 256,
+    "url": "https://did.art/hkust/70897657.2Mp8SM"
   }
 }
 ```
 
-如果 TrustMark 解码失败，后端会返回：
+如果 PixelSeal 解码失败，后端会返回：
 
 ```json
 {
@@ -354,39 +360,43 @@ return {
 
 1. 优先读取图片内嵌 C2PA
 2. 如果文件内没有 C2PA，再走 `/decode`
-3. 从图片像素里拿到 TrustMark watermark ID
+3. 从图片像素里拿到 PixelSeal watermark（DID URL / 256-bit id）
 4. 再调用 `/lookup-by-watermark` 从数据库里回查 manifest
 
-对应仓储查询：
+对应仓储查询（PixelSeal 没有纠错码，压缩可能翻转个别 bit，因此先精确匹配、再按汉明距离就近匹配）：
 
 ```python
-def get_manifest_record(watermark_id):
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT manifest_json, verifiable_credential, vc_issued_at FROM provenance WHERE watermark_id = ?",
-            (watermark_id,),
-        )
-        return cursor.fetchone()
+def get_manifest_record_nearest(watermark_id, max_distance):
+    # 先精确命中主键
+    exact = get_manifest_record(watermark_id)
+    if exact is not None:
+        return exact, 0
+    # 否则在同长度的候选中，返回汉明距离最近且不超过阈值的那条
+    # （WATERMARK_LOOKUP_MAX_DISTANCE = 20 bits）
+    ...
 ```
+
+阈值取 20 bit：远高于实测的解码误差（干净图/JPEG-60 为 0，JPEG-40 约 3 bit），又远低于不同随机 token 之间的距离，所以既能容错又不会误命中。`lookup_manifest_by_watermark` 的响应会额外带上就近命中的精确 `watermark_url`。
 
 所以数据库不是冗余存储，而是 DCC 场景下的核心恢复手段。
 
 ## 7. 当前依赖关系
 
-### 7.1 `python/` 目录
+### 7.1 `videoseal/` 子模块
 
-`backend/services/trustmark.py` 当前直接从本地 `python/` 目录导入 TrustMark：
+`backend/services/pixelseal.py` 从仓库根目录的 `videoseal/` **git 子模块** 导入 Meta 的 VideoSeal 库并加载 `pixelseal` 模型：
 
 ```python
-sys.path.append(os.path.abspath(os.path.join(BACKEND_DIR, '../python')))
-from trustmark import TrustMark
+sys.path.insert(0, os.path.join(PROJECT_DIR, 'videoseal'))
+import videoseal
+MODEL = videoseal.load("pixelseal")
 ```
 
 因此：
 
-- `Watermark/python` 当前是**运行必需**
-- 它不是单纯示例目录
+- 首次克隆后需要执行 `git submodule update --init --recursive` 拉取 `videoseal/`
+- `videoseal/` 是**运行必需**，不是单纯示例目录（旧的 `python/`（vendored TrustMark）目录已删除）
+- PixelSeal 的 checkpoint（约 1.2 GB）在首次水印调用时自动下载到 `videoseal/ckpts/pixelseal_checkpoint.pth`
 
 ### 7.2 `c2pa-python`
 

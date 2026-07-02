@@ -708,13 +708,22 @@ const C2paDisplay = ({ file }) => {
                           <p className="text-slate-800 font-medium">PixelSeal watermark detected.</p>
                           <p className="text-slate-600">No registered Content Credentials found.</p>
                         </div>
-                        <div className="flex flex-col pt-2">
-                          <span className="text-xs text-slate-500 uppercase tracking-wider">Watermark ID</span>
-                          <span className="text-slate-700 font-mono break-all text-xs">{decodedWatermark.secret}</span>
-                </div>
+                        {decodedWatermark.url && (
+                          <div className="flex flex-col pt-2">
+                            <span className="text-xs text-slate-500 uppercase tracking-wider">DID URL</span>
+                            <a
+                              href={decodedWatermark.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 hover:underline font-mono break-all text-xs"
+                            >
+                              {decodedWatermark.url}
+                            </a>
+                          </div>
+                        )}
                         <div className="flex flex-col">
                           <span className="text-xs text-slate-500 uppercase tracking-wider">Schema</span>
-                          <span className="text-slate-700">{decodedWatermark.schema}</span>
+                          <span className="text-slate-700">PixelSeal · {decodedWatermark.schema}-bit</span>
               </div>
             </div>
           </div>
